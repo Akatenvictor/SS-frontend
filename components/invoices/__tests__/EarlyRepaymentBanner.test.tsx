@@ -9,6 +9,10 @@ describe("EarlyRepaymentBanner", () => {
     newSettlementDate: "2024-11-15",
   };
 
+  beforeEach(() => {
+    window.sessionStorage.clear();
+  });
+
   it("renders early repayment information", () => {
     render(<EarlyRepaymentBanner {...defaultProps} />);
 
@@ -22,9 +26,32 @@ describe("EarlyRepaymentBanner", () => {
     const user = userEvent.setup();
     render(<EarlyRepaymentBanner {...defaultProps} />);
 
-    const closeButton = screen.getByRole("button");
-    await user.click(closeButton);
+    const dismissButton = screen.getByLabelText("Dismiss");
+    await user.click(dismissButton);
 
+    expect(screen.queryByText("Early Repayment Notice")).not.toBeInTheDocument();
+  });
+
+  it("dismisses when Acknowledge button is clicked", async () => {
+    const user = userEvent.setup();
+    render(<EarlyRepaymentBanner {...defaultProps} />);
+
+    const acknowledgeButton = screen.getByText("Acknowledge");
+    await user.click(acknowledgeButton);
+
+    expect(screen.queryByText("Early Repayment Notice")).not.toBeInTheDocument();
+  });
+
+  it("persists dismissal in sessionStorage", async () => {
+    const user = userEvent.setup();
+    const { unmount } = render(<EarlyRepaymentBanner {...defaultProps} />);
+
+    const dismissButton = screen.getByLabelText("Dismiss");
+    await user.click(dismissButton);
+    unmount();
+
+    // Re-render — should stay dismissed because sessionStorage persists
+    render(<EarlyRepaymentBanner {...defaultProps} />);
     expect(screen.queryByText("Early Repayment Notice")).not.toBeInTheDocument();
   });
 

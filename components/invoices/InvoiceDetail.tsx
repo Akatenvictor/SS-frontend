@@ -16,9 +16,11 @@ import { InvoiceMetaTags } from "@/components/invoices/InvoiceMetaTags";
 import { InvoiceBackButton } from "@/components/invoices/InvoiceBackButton";
 import { InvestmentModal } from "@/components/invoices/InvestmentModal";
 import { ReturnsBreakdown } from "@/components/invoices/ReturnsBreakdown";
+import { EarlyRepaymentBanner } from "@/components/invoices/EarlyRepaymentBanner";
 import { InvoiceProtectionInfo } from "@/components/invoices/InvoiceProtectionInfo";
 import { recordView } from "@/lib/recentlyViewed";
 import { useProtocolStatus } from "@/hooks/useProtocolStatus";
+import { useEarlyRepaymentNotification } from "@/hooks/useEarlyRepaymentNotification";
 
 /** Fallback while /protocol/status is loading or unavailable — matches the
  * previous hardcoded value so behaviour degrades gracefully rather than
@@ -114,6 +116,7 @@ export function InvoiceDetail({ invoiceId }: InvoiceDetailProps) {
   const minInvestment = protocolStatus?.min_investment ?? DEFAULT_MIN_INVESTMENT;
 
   usePageTitle(invoice?.title ?? null);
+  useEarlyRepaymentNotification(invoice);
 
   useEffect(() => {
     if (invoice) {
@@ -213,9 +216,14 @@ export function InvoiceDetail({ invoiceId }: InvoiceDetailProps) {
           </>
         )}
         {invoice.status === "funded" && (
-          <p data-testid="invest-funded-message">
-            This invoice is fully funded
-          </p>
+          <>
+            <p data-testid="invest-funded-message">
+              This invoice is fully funded
+            </p>
+            {invoice.early_repayment && (
+              <ReturnsBreakdown invoiceId={invoice.id} />
+            )}
+          </>
         )}
         {invoice.status === "draft" && null}
       </div>
