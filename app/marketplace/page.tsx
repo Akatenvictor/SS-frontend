@@ -20,6 +20,32 @@ import {
   InvoiceComparisonBar,
 } from "@/components/marketplace";
 import { Loader2, ArrowUp, ArrowDown } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+
+/**
+ * Page sizes offered by the selector (Issue #365).
+ *
+ * Kept as a closed set rather than a free number input: the value goes straight
+ * into the API `limit`, and an arbitrary one lets a client ask for the whole
+ * table in a single request.
+ */
+const PAGE_SIZE_OPTIONS = [10, 25, 50] as const;
+type PageSize = (typeof PAGE_SIZE_OPTIONS)[number];
+const DEFAULT_PAGE_SIZE: PageSize = 25;
+
+function parsePageSize(raw: string | null): PageSize {
+  const parsed = Number(raw);
+  return (PAGE_SIZE_OPTIONS as readonly number[]).includes(parsed)
+    ? (parsed as PageSize)
+    : DEFAULT_PAGE_SIZE;
+}
 
 type SortField = "amount" | "due_date" | null;
 type SortDirection = "asc" | "desc";
@@ -140,6 +166,17 @@ export default function MarketplacePage() {
   const [debouncedSearch, setDebouncedSearch] = useState(initialSearch);
   const [sortField, setSortField] = useState<SortField>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
+  const [pageSize, setPageSize] = useState<PageSize>(() =>
+    parsePageSize(searchParams.get("pageSize"))
+  );
+
+  // The cursor the list was scrolled to when the user navigated away, read once
+  // on mount so a browser Back restores their position (Issue #365). Captured in
+  // a ref rather than state: it seeds `initialPageParam` and must not change
+  // afterwards, or the query would reset itself as the user pages on.
+  const initialCursorRef = useRef<string | undefined>(
+    searchParams.get("cursor") ?? undefined
+  );
 
   // Sync state to URL params
   const updateUrlParams = useCallback(
@@ -190,8 +227,11 @@ export default function MarketplacePage() {
     if (panelFilters.toDate) obj.toDate = panelFilters.toDate;
     if (status !== "all") obj.status = status;
     if (debouncedSearch) obj.search = debouncedSearch;
+    // Part of the query key, so changing the page size starts a fresh query
+    // rather than appending differently-sized pages to the existing list.
+    obj.limit = String(pageSize);
     return obj;
-  }, [panelFilters, status, debouncedSearch]);
+  }, [panelFilters, status, debouncedSearch, pageSize]);
 
   const {
     data,
@@ -203,7 +243,7 @@ export default function MarketplacePage() {
   } = useInfiniteQuery({
     queryKey: ["invoices", queryParamsObj],
     queryFn: ({ pageParam }) => fetchInvoices(pageParam as string | undefined, queryParamsObj),
-    initialPageParam: undefined as string | undefined,
+    initialPageParam: initialCursorRef.current as string | undefined,
     getNextPageParam: (lastPage) =>
       lastPage.has_more ? lastPage.next_cursor ?? undefined : undefined,
     refetchInterval: 30 * 1000,
@@ -242,6 +282,58 @@ export default function MarketplacePage() {
     () => data?.pages.flatMap((p) => p.invoices) ?? [],
     [data]
   );
+
+  /**
+   * Mirrors the furthest-loaded cursor into the URL (Issue #365).
+   *
+   * Written with `replace` rather than `push` so paging does not stack history
+   * entries — a user who loaded five pages should go Back to where they came
+   * from, not five times through the same list.
+   *
+   * On restore this resumes *from* that cursor rather than re-accumulating every
+   * preceding page. That is the standard behaviour for cursor pagination and the
+   * reason to prefer it over offsets: replaying N pages would mean N sequential
+   * requests before the first paint, and the earlier cursors are not in the URL
+   * to replay from anyway.
+   */
+  const lastCursor = useMemo(() => {
+    const pages = data?.pages;
+    if (!pages || pages.length === 0) return undefined;
+    // The cursor that produced the final loaded page is the one before it.
+    return pages.length > 1 ? pages[pages.length - 2]?.next_cursor ?? undefined : undefined;
+  }, [data]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(searchParams.toString());
+
+    if (lastCursor) {
+      params.set("cursor", lastCursor);
+    } else {
+      params.delete("cursor");
+    }
+
+    if (pageSize !== DEFAULT_PAGE_SIZE) {
+      params.set("pageSize", String(pageSize));
+    } else {
+      params.delete("pageSize");
+    }
+
+    const next = params.toString();
+    // Only write when something actually changed, or the effect re-triggers
+    // itself through `searchParams` on every render.
+    if (next !== searchParams.toString()) {
+      router.replace(next ? `${pathname}?${next}` : pathname, { scroll: false });
+    }
+  }, [lastCursor, pageSize, pathname, router, searchParams]);
+
+  const handlePageSizeChange = useCallback((value: string) => {
+    const next = parsePageSize(value);
+    // Clearing the restored cursor matters: a cursor issued for a 10-item page
+    // is meaningless against a 50-item one, and reusing it would skip or repeat
+    // rows.
+    initialCursorRef.current = undefined;
+    setPageSize(next);
+  }, []);
 
   const handleSearchChange = useCallback(
     (value: string) => {
@@ -440,6 +532,34 @@ export default function MarketplacePage() {
                 activeDirection={sortDirection}
                 onSort={handleSort}
               />
+
+              <div className="ml-auto flex items-center gap-2">
+                <label
+                  htmlFor="marketplace-page-size"
+                  className="text-xs text-muted-foreground"
+                >
+                  Per page
+                </label>
+                <Select
+                  value={String(pageSize)}
+                  onValueChange={handlePageSizeChange}
+                >
+                  <SelectTrigger
+                    id="marketplace-page-size"
+                    className="h-8 w-[72px]"
+                    data-testid="page-size-select"
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PAGE_SIZE_OPTIONS.map((size) => (
+                      <SelectItem key={size} value={String(size)}>
+                        {size}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
 
             <div className="space-y-4">
@@ -456,9 +576,43 @@ export default function MarketplacePage() {
                 Array.from({ length: 3 }).map((_, i) => (
                   <InvoiceCardSkeleton key={`skeleton-${i}`} />
                 ))}
+
+              {/*
+                The sentinel stays, so scrolling still auto-loads, and the
+                button is added beside it (Issue #365). Both guard on
+                `isFetchingNextPage`, so whichever fires first the other is a
+                no-op. A button is not redundant with the observer: it is
+                reachable by keyboard, it is what a screen reader announces, and
+                it gives the user an explicit "end of what I asked for" stop
+                instead of a list that grows as long as they keep scrolling.
+              */}
               {hasNextPage && <div ref={sentinelRefCallback} className="h-4" />}
+
+              {hasNextPage && (
+                <div className="flex justify-center py-4">
+                  <Button
+                    variant="outline"
+                    onClick={() => fetchNextPage()}
+                    disabled={isFetchingNextPage}
+                    data-testid="load-more-btn"
+                  >
+                    {isFetchingNextPage ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Loading…
+                      </>
+                    ) : (
+                      `Load ${pageSize} more`
+                    )}
+                  </Button>
+                </div>
+              )}
+
               {!hasNextPage && filtered.length > 0 && (
-                <p className="text-center text-sm text-muted-foreground py-4">
+                <p
+                  className="text-center text-sm text-muted-foreground py-4"
+                  data-testid="end-of-results"
+                >
                   No more invoices
                 </p>
               )}
