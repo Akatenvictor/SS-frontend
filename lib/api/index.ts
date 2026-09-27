@@ -2089,3 +2089,290 @@ export async function buyFraction(
   }
   return res.json();
 }
+
+// ─── Admin invoice review queue (issue #384) ─────────────────────────────
+
+export interface PendingInvoice {
+  id: string;
+  title: string;
+  seller: string;
+  face_value: number;
+  submission_date: string;
+  document_url?: string;
+}
+
+export interface PendingInvoicesResponse {
+  invoices: PendingInvoice[];
+}
+
+function normalizePendingInvoice(raw: any): PendingInvoice {
+  return {
+    id: raw.id ?? raw.invoiceId ?? raw.invoice_id ?? "",
+    title: raw.title ?? raw.invoice_title ?? "",
+    seller: raw.seller ?? raw.sellerWallet ?? raw.seller_wallet ?? "",
+    face_value:
+      Number(raw.face_value ?? raw.faceValue ?? raw.amount ?? 0),
+    submission_date:
+      raw.submission_date ?? raw.submissionDate ?? raw.submitted_at ?? raw.created_at ?? "",
+    document_url: raw.document_url ?? raw.documentUrl ?? undefined,
+  };
+}
+
+export async function fetchPendingInvoices(
+  token?: string
+): Promise<PendingInvoice[]> {
+  const res = await fetch(`${API_BASE}/admin/invoices?status=pending`, {
+    headers: authHeaders(token),
+  });
+  if (!res.ok) throw new Error("Failed to fetch pending invoices");
+  const payload = await res.json();
+  const list: any[] = Array.isArray(payload)
+    ? payload
+    : payload.invoices ?? [];
+  return list.map(normalizePendingInvoice);
+}
+
+export interface ReviewedInvoice extends PendingInvoice {
+  review_status: "approved" | "rejected";
+  reviewed_at: string;
+  rejection_reason?: string;
+}
+
+export interface ReviewedInvoicesResponse {
+  invoices: ReviewedInvoice[];
+  has_more: boolean;
+  next_cursor: string | null;
+}
+
+function normalizeReviewedInvoice(raw: any): ReviewedInvoice {
+  const base = normalizePendingInvoice(raw);
+  return {
+    ...base,
+    review_status: raw.review_status ?? raw.reviewStatus ?? raw.status ?? "approved",
+    reviewed_at: raw.reviewed_at ?? raw.reviewedAt ?? raw.updated_at ?? "",
+    rejection_reason: raw.rejection_reason ?? raw.rejectionReason ?? undefined,
+  };
+}
+
+export async function fetchReviewedInvoices(
+  status: "approved" | "rejected",
+  cursor?: string,
+  token?: string
+): Promise<ReviewedInvoicesResponse> {
+  const params = new URLSearchParams({ status });
+  if (cursor) params.set("cursor", cursor);
+  const res = await fetch(`${API_BASE}/admin/invoices?${params}`, {
+    headers: authHeaders(token),
+  });
+  if (!res.ok) throw new Error("Failed to fetch reviewed invoices");
+  const payload = await res.json();
+  const list: any[] = Array.isArray(payload)
+    ? payload
+    : payload.invoices ?? [];
+  return {
+    invoices: list.map(normalizeReviewedInvoice),
+    has_more: payload.has_more ?? false,
+    next_cursor: payload.next_cursor ?? null,
+  };
+}
+
+export async function approveInvoice(
+  invoiceId: string,
+  token?: string
+): Promise<{ success: boolean }> {
+  const res = await fetch(`${API_BASE}/admin/invoices/${invoiceId}/approve`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders(token) },
+  });
+  if (!res.ok) throw new Error("Failed to approve invoice");
+  return res.json();
+}
+
+export async function rejectInvoice(
+  invoiceId: string,
+  reason: string,
+  token?: string
+): Promise<{ success: boolean }> {
+  const res = await fetch(`${API_BASE}/admin/invoices/${invoiceId}/reject`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders(token) },
+    body: JSON.stringify({ reason }),
+  });
+  if (!res.ok) throw new Error("Failed to reject invoice");
+  return res.json();
+}
+
+// ─── Issuer earnings dashboard (issue #387) ──────────────────────────────
+
+export interface IssuerEarningsSummary {
+  gross_proceeds: number;
+  platform_fee: number;
+  net_payout: number;
+}
+
+export type IssuerPayoutStatus = "pending" | "paid" | "processing";
+
+export interface IssuerInvoiceEarning {
+  invoice_id: string;
+  invoice_title: string;
+  face_value: number;
+  funded_date: string;
+  gross_proceeds: number;
+  platform_fee: number;
+  net_payout: number;
+  payout_status: IssuerPayoutStatus;
+  transaction_hash?: string;
+}
+
+export interface IssuerEarningsResponse {
+  summary: IssuerEarningsSummary;
+  invoices: IssuerInvoiceEarning[];
+  has_more: boolean;
+  next_cursor: string | null;
+}
+
+function normalizeIssuerEarningsSummary(raw: any): IssuerEarningsSummary {
+  return {
+    gross_proceeds: Number(raw.gross_proceeds ?? raw.grossProceeds ?? 0),
+    platform_fee: Number(raw.platform_fee ?? raw.platformFee ?? 0),
+    net_payout: Number(raw.net_payout ?? raw.netPayout ?? 0),
+  };
+}
+
+function normalizeIssuerInvoiceEarning(raw: any): IssuerInvoiceEarning {
+  return {
+    invoice_id: raw.invoice_id ?? raw.invoiceId ?? raw.id ?? "",
+    invoice_title: raw.invoice_title ?? raw.invoiceTitle ?? raw.title ?? "",
+    face_value: Number(raw.face_value ?? raw.faceValue ?? raw.amount ?? 0),
+    funded_date: raw.funded_date ?? raw.fundedDate ?? raw.funded_at ?? "",
+    gross_proceeds: Number(raw.gross_proceeds ?? raw.grossProceeds ?? 0),
+    platform_fee: Number(raw.platform_fee ?? raw.platformFee ?? 0),
+    net_payout: Number(raw.net_payout ?? raw.netPayout ?? 0),
+    payout_status: raw.payout_status ?? raw.payoutStatus ?? "pending",
+    transaction_hash: raw.transaction_hash ?? raw.transactionHash ?? undefined,
+  };
+}
+
+export async function fetchIssuerEarnings(
+  cursor?: string,
+  token?: string
+): Promise<IssuerEarningsResponse> {
+  const params = new URLSearchParams();
+  if (cursor) params.set("cursor", cursor);
+  const res = await fetch(`${API_BASE}/issuer/earnings?${params}`, {
+    headers: authHeaders(token),
+  });
+  if (!res.ok) throw new Error("Failed to fetch issuer earnings");
+  const payload = await res.json();
+  return {
+    summary: normalizeIssuerEarningsSummary(payload.summary ?? payload),
+    invoices: (payload.invoices ?? []).map(normalizeIssuerInvoiceEarning),
+    has_more: payload.has_more ?? false,
+    next_cursor: payload.next_cursor ?? null,
+  };
+}
+
+export async function withdrawIssuerEarnings(
+  invoiceId: string,
+  token?: string
+): Promise<{ success: boolean; transaction_hash?: string }> {
+  const res = await fetch(`${API_BASE}/issuer/earnings/${invoiceId}/withdraw`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders(token) },
+  });
+  if (!res.ok) throw new Error("Failed to submit withdrawal");
+  return res.json();
+}
+
+// ─── Invoice funding progress polling (issue #388) ───────────────────────
+
+export interface InvoiceFundingProgress {
+  invoice_id: string;
+  raised: number;
+  target: number;
+  investor_count: number;
+  is_fully_funded: boolean;
+}
+
+function normalizeInvoiceFundingProgress(raw: any, invoiceId: string): InvoiceFundingProgress {
+  const target = Number(raw.target ?? raw.amount ?? raw.face_value ?? 0);
+  const raised = Number(raw.raised ?? raw.funded ?? raw.raised_amount ?? 0);
+  return {
+    invoice_id: raw.invoice_id ?? raw.invoiceId ?? invoiceId,
+    raised,
+    target,
+    investor_count: Number(raw.investor_count ?? raw.investorCount ?? 0),
+    is_fully_funded:
+      typeof raw.is_fully_funded === "boolean"
+        ? raw.is_fully_funded
+        : target > 0 && raised >= target,
+  };
+}
+
+export async function fetchInvoiceFundingProgress(
+  invoiceId: string
+): Promise<InvoiceFundingProgress> {
+  const res = await fetch(
+    `${API_BASE}/invoices/${encodeURIComponent(invoiceId)}/funding-progress`
+  );
+  if (!res.ok) throw new Error("Failed to fetch funding progress");
+  return normalizeInvoiceFundingProgress(await res.json(), invoiceId);
+}
+
+// ─── Investor accreditation gating (issue #389) ──────────────────────────
+
+export type AccreditationTier = "unaccredited" | "accredited" | "qualified";
+
+export interface AccreditationStatus {
+  wallet: string;
+  tier: AccreditationTier;
+  /** Minimum face value (XLM) that requires accreditation. */
+  high_value_threshold: number;
+}
+
+const ACCREDITATION_TIERS: AccreditationTier[] = [
+  "unaccredited",
+  "accredited",
+  "qualified",
+];
+
+function normalizeAccreditationTier(raw: any): AccreditationTier {
+  const v = String(raw ?? "").toLowerCase();
+  if ((ACCREDITATION_TIERS as string[]).includes(v)) return v as AccreditationTier;
+  if (v === "none" || v === "basic") return "unaccredited";
+  if (v === "standard" || v === "verified") return "accredited";
+  if (v === "institutional" || v === "sophisticated") return "qualified";
+  return "unaccredited";
+}
+
+function normalizeAccreditationStatus(raw: any, wallet: string): AccreditationStatus {
+  return {
+    wallet: raw.wallet ?? raw.address ?? wallet,
+    tier: normalizeAccreditationTier(raw.tier ?? raw.accreditation_tier ?? raw.accreditationTier),
+    high_value_threshold: Number(
+      raw.high_value_threshold ?? raw.highValueThreshold ?? raw.threshold ?? 100_000
+    ),
+  };
+}
+
+export async function fetchAccreditationStatus(
+  walletAddress: string,
+  token?: string
+): Promise<AccreditationStatus> {
+  const res = await fetch(
+    `${API_BASE}/investors/${encodeURIComponent(walletAddress)}/accreditation`,
+    { headers: authHeaders(token) }
+  );
+  if (!res.ok) throw new Error("Failed to fetch accreditation status");
+  return normalizeAccreditationStatus(await res.json(), walletAddress);
+}
+
+/** True if the investor's accreditation tier allows investing in a given invoice face value. */
+export function isAccreditedForInvoice(
+  tier: AccreditationTier,
+  faceValue: number,
+  threshold: number
+): boolean {
+  if (faceValue < threshold) return true;
+  return tier === "accredited" || tier === "qualified";
+}
