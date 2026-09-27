@@ -11,6 +11,20 @@ export interface Invoice {
   rejection_reason?: string;
   /** Risk grade (A = safest). Used to gate investing by suitability tier (#391). */
   risk_rating?: { tier: "A" | "B" | "C" | "D"; score?: number };
+  /** Industry sector, for the marketplace taxonomy filter (#420). */
+  category?: string;
+  /** Coarser risk grouping derived from `risk_rating.tier` (#420). */
+  risk_tier?: string;
+  /** Geographic region of the underlying receivable (#420). */
+  region?: string;
+  /** Free-form tags chosen by the issuer at publish time (#420). */
+  tags?: string[];
+  /** When the invoice reached `funded`, for the 24h velocity window (#421). */
+  funded_at?: string | null;
+  /** When the invoice settled; present only on settled invoices (#423). */
+  settled_at?: string | null;
+  /** Amount committed in the 24h before now, for the velocity badge (#421). */
+  raised_last_24h?: number;
   has_more: boolean;
   next_cursor: string | null;
 }
@@ -143,6 +157,35 @@ export async function transferInvoicePosition(
     }),
   });
   if (!res.ok) throw new Error("Failed to transfer position");
+  return res.json();
+}
+
+/** Sends `quantity` invoice fractions held in `invoiceId` to `recipient`
+ * without selling them (#421). Returns the submitted transaction hash so the
+ * UI can link the receipt on an explorer. */
+export async function transferInvoiceFractions(
+  invoiceId: string,
+  recipient: string,
+  quantity: number,
+  walletAddress: string,
+  token?: string
+): Promise<{ success: boolean; transaction_hash: string }> {
+  const res = await fetch(
+    `${API_BASE}/invoices/${encodeURIComponent(invoiceId)}/transfer-fractions`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...authHeaders(token),
+      },
+      body: JSON.stringify({
+        recipient,
+        quantity,
+        wallet: walletAddress,
+      }),
+    }
+  );
+  if (!res.ok) throw new Error("Failed to transfer invoice fractions");
   return res.json();
 }
 
@@ -2406,6 +2449,44 @@ export async function fetchInvoiceFundingProgress(
   );
   if (!res.ok) throw new Error("Failed to fetch funding progress");
   return normalizeInvoiceFundingProgress(await res.json(), invoiceId);
+}
+
+/** Demand signals shown on an invoice card: how many investors are on it and
+ * how fast funding arrived over the last 24 hours (#422). */
+export interface InvoiceDemandMetrics {
+  invoice_id: string;
+  /** Unique investors backing the invoice, as reported by the API. */
+  investor_count: number;
+  /** Face value committed in the last 24 hours. */
+  raised_last_24h: number;
+  /** Total raised, so the 24h rate can be expressed as a percentage. */
+  raised: number;
+  target: number;
+  /** When the invoice was funded; `null` while it is still open. */
+  funded_at: string | null;
+}
+
+function normalizeInvoiceDemandMetrics(raw: any, invoiceId: string): InvoiceDemandMetrics {
+  return {
+    invoice_id: raw.invoice_id ?? raw.invoiceId ?? invoiceId,
+    investor_count: Number(raw.investor_count ?? raw.investorCount ?? 0),
+    raised_last_24h: Number(
+      raw.raised_last_24h ?? raw.raisedLast24h ?? raw.last_24h ?? 0
+    ),
+    raised: Number(raw.raised ?? raw.funded ?? 0),
+    target: Number(raw.target ?? raw.amount ?? raw.face_value ?? 0),
+    funded_at: raw.funded_at ?? raw.fundedAt ?? null,
+  };
+}
+
+export async function fetchInvoiceDemandMetrics(
+  invoiceId: string
+): Promise<InvoiceDemandMetrics> {
+  const res = await fetch(
+    `${API_BASE}/invoices/${encodeURIComponent(invoiceId)}/demand-metrics`
+  );
+  if (!res.ok) throw new Error("Failed to fetch demand metrics");
+  return normalizeInvoiceDemandMetrics(await res.json(), invoiceId);
 }
 
 // ─── Investor accreditation gating (issue #389) ──────────────────────────

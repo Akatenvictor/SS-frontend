@@ -32,6 +32,9 @@ import { usePageTitle } from "@/hooks/usePageTitle";
 import { useProtocolStatus } from "@/hooks/useProtocolStatus";
 import { useWallet } from "@/context/WalletContext";
 import { isExpired } from "@/components/marketplace";
+import { InvestorDemandMetrics } from "@/components/marketplace/InvestorDemandMetrics";
+import { InvoiceTagPills } from "@/components/marketplace/InvoiceTagPills";
+import { SettlementCountdown } from "@/components/marketplace/SettlementCountdown";
 import { truncateAddress } from "@/lib/stellar";
 import { DEFAULT_MIN_INVESTMENT } from "@/lib/invoiceDefaults";
 
@@ -242,6 +245,35 @@ export function InvoiceDetailView({ invoiceId }: InvoiceDetailViewProps) {
         maturityDate={invoice.due_date}
         minInvestment={minInvestment}
       />
+
+      {/*
+        Demand signals (#422) and the maturity countdown (#423) sit directly
+        under the financials: both answer "how much interest is this getting"
+        and "when do I get paid", which is what the headline numbers are for.
+      */}
+      <Card data-testid="invoice-demand-card">
+        <CardContent className="pt-6 space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm font-medium text-muted-foreground">Demand</p>
+            <InvestorDemandMetrics
+              invoiceId={invoice.id}
+              investorCountFallback={invoice.investor_count}
+            />
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm font-medium text-muted-foreground">
+              Time to maturity
+            </p>
+            <SettlementCountdown
+              maturityDate={invoice.due_date}
+              settledAt={invoice.settled_at}
+              variant="detail"
+              labelled
+            />
+          </div>
+          <InvoiceTagPills invoice={invoice} />
+        </CardContent>
+      </Card>
 
       {/* Funding progress: amount raised against the face value. */}
       <Card>

@@ -18,7 +18,22 @@ import {
   isExpired,
   ComparisonProvider,
   InvoiceComparisonBar,
+  TaxonomyFilterPanel,
+  ActiveTaxonomyChips,
+  InvoiceTagPills,
+  SettlementCountdown,
+  InvestorDemandMetrics,
 } from "@/components/marketplace";
+import {
+  EMPTY_TAXONOMY_FILTERS,
+  applyTaxonomyFilters,
+  filterByTaxonomy,
+  hasActiveTaxonomyFilters,
+  parseTaxonomyFilters,
+  removeTaxonomyFilterValue,
+  type FilterChip,
+  type TaxonomyFilterState,
+} from "@/lib/invoiceTaxonomy";
 import { Loader2, ArrowUp, ArrowDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -80,14 +95,15 @@ function SortHeader({
 
 function InvoiceRow({ invoice }: { invoice: Invoice }) {
   return (
-    <Card>
+    <Card data-testid={`invoice-row-${invoice.id}`}>
       <CardHeader className="pb-2">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-3">
           <h3 className="font-semibold">{invoice.title}</h3>
           <Badge variant={invoice.status === "open" ? "default" : "secondary"}>
             {invoice.status}
           </Badge>
         </div>
+        <InvoiceTagPills invoice={invoice} />
       </CardHeader>
       <CardContent>
         <div className="grid grid-cols-4 gap-4 text-sm text-muted-foreground">
@@ -103,17 +119,28 @@ function InvoiceRow({ invoice }: { invoice: Invoice }) {
             </span>
             Yield
           </div>
+          {/*
+            Replaces the plain investor count: it renders the same figure from
+            the demand endpoint and adds the 24h velocity badge beside it (#422).
+          */}
           <div>
             <span className="block text-foreground font-medium">
-              {invoice.investor_count}
+              <InvestorDemandMetrics
+                invoiceId={invoice.id}
+                investorCountFallback={invoice.investor_count}
+              />
             </span>
             Investors
           </div>
           <div>
             <span className="block text-foreground font-medium">
-              {new Date(invoice.due_date).toLocaleDateString()}
+              {/* Countdown to maturity replaces the bare date (#423). */}
+              <SettlementCountdown
+                maturityDate={invoice.due_date}
+                settledAt={invoice.status === "settled" ? invoice.settled_at : null}
+              />
             </span>
-            Due Date
+            Maturity
           </div>
         </div>
         <div className="mt-4">
@@ -169,6 +196,11 @@ export default function MarketplacePage() {
   const [pageSize, setPageSize] = useState<PageSize>(() =>
     parsePageSize(searchParams.get("pageSize"))
   );
+  // Sector / risk / geography taxonomy (#420). Seeded from the URL so a shared
+  // link opens with the same narrowing already applied.
+  const [taxonomyFilters, setTaxonomyFilters] = useState<TaxonomyFilterState>(
+    () => parseTaxonomyFilters(new URLSearchParams(searchParams.toString()))
+  );
 
   // The cursor the list was scrolled to when the user navigated away, read once
   // on mount so a browser Back restores their position (Issue #365). Captured in
@@ -180,7 +212,12 @@ export default function MarketplacePage() {
 
   // Sync state to URL params
   const updateUrlParams = useCallback(
-    (newFilters: MarketplaceFilterState, newStatus: string, newSearch: string) => {
+    (
+      newFilters: MarketplaceFilterState,
+      newStatus: string,
+      newSearch: string,
+      newTaxonomy: TaxonomyFilterState = EMPTY_TAXONOMY_FILTERS
+    ) => {
       const params = new URLSearchParams();
       if (newFilters.statuses.length > 0) {
         params.set("statuses", newFilters.statuses.join(","));
@@ -206,6 +243,9 @@ export default function MarketplacePage() {
       if (newSearch) {
         params.set("search", newSearch);
       }
+      // Taxonomy dims are written last so they survive every other filter
+      // write above, all of which rebuild the params from scratch.
+      applyTaxonomyFilters(params, newTaxonomy);
 
       const queryString = params.toString();
       const targetUrl = queryString ? `${pathname}?${queryString}` : pathname;
@@ -216,8 +256,30 @@ export default function MarketplacePage() {
 
   const handleFilterChange = (newFilters: MarketplaceFilterState) => {
     setPanelFilters(newFilters);
-    updateUrlParams(newFilters, status, debouncedSearch);
+    updateUrlParams(newFilters, status, debouncedSearch, taxonomyFilters);
   };
+
+  const handleTaxonomyChange = useCallback(
+    (newTaxonomy: TaxonomyFilterState) => {
+      setTaxonomyFilters(newTaxonomy);
+      updateUrlParams(panelFilters, status, debouncedSearch, newTaxonomy);
+    },
+    [debouncedSearch, panelFilters, status, updateUrlParams]
+  );
+
+  /** Chip removal: drop one value, keep every other dimension intact (#420). */
+  const handleRemoveChip = useCallback(
+    (chip: FilterChip) => {
+      handleTaxonomyChange(
+        removeTaxonomyFilterValue(taxonomyFilters, chip.dimension, chip.value)
+      );
+    },
+    [handleTaxonomyChange, taxonomyFilters]
+  );
+
+  const handleClearTaxonomy = useCallback(() => {
+    handleTaxonomyChange(EMPTY_TAXONOMY_FILTERS);
+  }, [handleTaxonomyChange]);
 
   const queryParamsObj = useMemo(() => {
     const obj: Record<string, string> = {};
@@ -227,11 +289,22 @@ export default function MarketplacePage() {
     if (panelFilters.toDate) obj.toDate = panelFilters.toDate;
     if (status !== "all") obj.status = status;
     if (debouncedSearch) obj.search = debouncedSearch;
+    // Sent to the server so a shared link narrows on the backend too, not only
+    // in this tab (#420).
+    if (taxonomyFilters.categories.length > 0) {
+      obj.category = taxonomyFilters.categories.join(",");
+    }
+    if (taxonomyFilters.riskTiers.length > 0) {
+      obj.risk = taxonomyFilters.riskTiers.join(",");
+    }
+    if (taxonomyFilters.regions.length > 0) {
+      obj.region = taxonomyFilters.regions.join(",");
+    }
     // Part of the query key, so changing the page size starts a fresh query
     // rather than appending differently-sized pages to the existing list.
     obj.limit = String(pageSize);
     return obj;
-  }, [panelFilters, status, debouncedSearch, pageSize]);
+  }, [panelFilters, status, debouncedSearch, pageSize, taxonomyFilters]);
 
   const {
     data,
@@ -341,18 +414,18 @@ export default function MarketplacePage() {
       if (debounceRef.current) clearTimeout(debounceRef.current);
       debounceRef.current = setTimeout(() => {
         setDebouncedSearch(value);
-        updateUrlParams(panelFilters, status, value);
+        updateUrlParams(panelFilters, status, value, taxonomyFilters);
       }, 300);
     },
-    [panelFilters, status, updateUrlParams]
+    [panelFilters, status, taxonomyFilters, updateUrlParams]
   );
 
   const handleStatusChange = useCallback(
     (newStatus: "open" | "funded" | "settled" | "all") => {
       setStatus(newStatus);
-      updateUrlParams(panelFilters, newStatus, debouncedSearch);
+      updateUrlParams(panelFilters, newStatus, debouncedSearch, taxonomyFilters);
     },
-    [panelFilters, debouncedSearch, updateUrlParams]
+    [panelFilters, debouncedSearch, taxonomyFilters, updateUrlParams]
   );
 
   const handleSort = useCallback(
@@ -387,6 +460,7 @@ export default function MarketplacePage() {
     setDebouncedSearch("");
     setSortField(null);
     setSortDirection("asc");
+    setTaxonomyFilters(EMPTY_TAXONOMY_FILTERS);
     router.replace(pathname, { scroll: false });
   }, [pathname, router]);
 
@@ -470,6 +544,38 @@ export default function MarketplacePage() {
     return result;
   }, [allInvoices, status, debouncedSearch, panelFilters, sortField, sortDirection]);
 
+  /**
+   * Taxonomy narrowing runs after the existing filters (#420).
+   *
+   * The server is sent the same taxonomy params, so on a backend that honours
+   * them this is a fast mirror over the rows already in hand rather than the
+   * only narrowing — but it is still what makes a checkbox respond
+   * immediately, and what keeps the client honest while a page is mid-fetch.
+   */
+  const visibleInvoices = useMemo(
+    () => filterByTaxonomy(filtered, taxonomyFilters),
+    [filtered, taxonomyFilters]
+  );
+
+  /**
+   * Any narrowing of any kind is active.
+   *
+   * Drives the empty state: when the user has narrowed and nothing survived,
+   * they need a way out. When nothing is narrowed and the list is still empty,
+   * there is nothing to clear and the copy should say so instead of blaming
+   * filters that were never touched.
+   */
+  const hasAnyFilterApplied =
+    hasActiveTaxonomyFilters(taxonomyFilters) ||
+    panelFilters.statuses.length > 0 ||
+    panelFilters.minYield > 0 ||
+    Boolean(panelFilters.fromDate) ||
+    Boolean(panelFilters.toDate) ||
+    panelFilters.minAmount > 0 ||
+    panelFilters.maxAmount > 0 ||
+    status !== "all" ||
+    debouncedSearch !== "";
+
   if (isLoading) {
     return (
       <main className="container mx-auto px-4 py-8">
@@ -494,12 +600,28 @@ export default function MarketplacePage() {
         <h1 className="text-2xl font-bold mb-6">Invoice Marketplace</h1>
 
         <div className="flex flex-col md:flex-row gap-6">
-          {/* Collapsible Filter Panel on the left */}
-          <FilterPanel
-            filters={panelFilters}
-            onFilterChange={handleFilterChange}
-            onClear={handleClearAll}
-          />
+          <div className="w-full md:w-64 shrink-0 space-y-4">
+            <FilterPanel
+              filters={panelFilters}
+              onFilterChange={handleFilterChange}
+              onClear={handleClearAll}
+            />
+
+            {/*
+              The taxonomy dimensions get their own rail below the funding
+              panel rather than inside it: `FilterPanel` owns a collapsible
+              header and an active-count badge, and folding three more
+              checkbox groups under that single disclosure would bury them
+              behind two clicks (#420).
+            */}
+            <div className="rounded-lg border p-4 bg-card">
+              <h2 className="mb-4 text-sm font-semibold">Refine</h2>
+              <TaxonomyFilterPanel
+                filters={taxonomyFilters}
+                onFilterChange={handleTaxonomyChange}
+              />
+            </div>
+          </div>
 
           <div className="flex-1 space-y-4">
             <MarketplaceFilterBar
@@ -508,6 +630,14 @@ export default function MarketplacePage() {
               onStatusChange={handleStatusChange}
               onSearchChange={handleSearchChange}
               onClear={handleClearAll}
+            />
+
+            {/* Above the results, not inside the rail, so the applied
+                narrowing stays visible and removable while browsing (#420). */}
+            <ActiveTaxonomyChips
+              filters={taxonomyFilters}
+              onRemove={handleRemoveChip}
+              onClearAll={handleClearTaxonomy}
             />
 
             {isFetching && !isLoading && (
@@ -563,12 +693,29 @@ export default function MarketplacePage() {
             </div>
 
             <div className="space-y-4">
-              {filtered.length === 0 ? (
-                <p className="py-12 text-center text-muted-foreground" data-testid="no-invoices-msg">
-                  No invoices match your filters.
-                </p>
+              {visibleInvoices.length === 0 ? (
+                <div
+                  className="space-y-4 py-12 text-center text-muted-foreground"
+                  data-testid="no-invoices-msg"
+                >
+                  <p>
+                    {hasAnyFilterApplied
+                      ? "No invoices match your filters."
+                      : "No invoices have been published yet."}
+                  </p>
+                  {hasAnyFilterApplied && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleClearAll}
+                      data-testid="empty-state-clear-filters"
+                    >
+                      Clear all filters
+                    </Button>
+                  )}
+                </div>
               ) : (
-                filtered.map((invoice) => (
+                visibleInvoices.map((invoice) => (
                   <InvoiceRow key={invoice.id} invoice={invoice} />
                 ))
               )}
@@ -608,7 +755,7 @@ export default function MarketplacePage() {
                 </div>
               )}
 
-              {!hasNextPage && filtered.length > 0 && (
+              {!hasNextPage && visibleInvoices.length > 0 && (
                 <p
                   className="text-center text-sm text-muted-foreground py-4"
                   data-testid="end-of-results"

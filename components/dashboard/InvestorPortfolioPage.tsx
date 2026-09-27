@@ -10,6 +10,9 @@ import { Badge } from "@/components/ui/badge";
 import { usePortfolio } from "@/hooks/usePortfolio";
 import { fetchInvestorPayouts, type PayoutRecord } from "@/lib/api";
 import { formatXLM } from "@/lib/format";
+import { availableFractions } from "@/lib/portfolio";
+import { FractionTransferModal } from "@/components/dashboard/FractionTransferModal";
+import { SettlementCountdown } from "@/components/marketplace/SettlementCountdown";
 import { Download, ExternalLink } from "lucide-react";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
@@ -95,6 +98,7 @@ function HoldingsTab() {
               <th className="p-3 font-medium">Current Value</th>
               <th className="p-3 font-medium">Maturity Date</th>
               <th className="p-3 font-medium">Status</th>
+              <th className="p-3 font-medium text-right">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y">
@@ -105,17 +109,46 @@ function HoldingsTab() {
                 data-testid={`holding-row-${pos.invoice_id}`}
               >
                 <td className="p-3 font-medium">{pos.invoice_title}</td>
-                <td className="p-3">{pos.quantity ?? "—"}</td>
+                <td className="p-3">
+                  {pos.quantity ?? "—"}
+                  {/*
+                    Listed fractions are locked into a live sale, so the
+                    transferable figure is lower than the figure owned (#421).
+                  */}
+                  {(pos.listed_quantity ?? 0) > 0 && (
+                    <span
+                      className="ml-1.5 text-xs text-muted-foreground"
+                      data-testid={`listed-fractions-${pos.invoice_id}`}
+                    >
+                      ({availableFractions(pos)} free)
+                    </span>
+                  )}
+                </td>
                 <td className="p-3">{formatXLM(pos.committed_amount)}</td>
                 <td className="p-3 text-muted-foreground">
-                  {pos.lockup_expires_at
-                    ? new Date(pos.lockup_expires_at).toLocaleDateString()
-                    : "—"}
+                  {pos.lockup_expires_at ? (
+                    /*
+                     * The countdown reads the server-side maturity timestamp
+                     * rather than the formatted date, so the two never drift
+                     * apart by a timezone (#423).
+                     */
+                    <SettlementCountdown
+                      maturityDate={pos.lockup_expires_at}
+                      settledAt={pos.status === "settled" ? null : undefined}
+                    />
+                  ) : (
+                    "—"
+                  )}
                 </td>
                 <td className="p-3">
                   <Badge variant="outline" className="capitalize">
                     {pos.status}
                   </Badge>
+                </td>
+                <td className="p-3 text-right">
+                  <div className="flex justify-end">
+                    <FractionTransferModal position={pos} />
+                  </div>
                 </td>
               </tr>
             ))}

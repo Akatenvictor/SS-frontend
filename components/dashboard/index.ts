@@ -12,6 +12,7 @@ export { PayoutHistoryTable } from "./PayoutHistoryTable";
 export { VestingProgressWidget } from "./VestingProgressWidget";
 export { HoldingActionsMenu } from "./HoldingActionsMenu";
 export { KeyTransferModal } from "./KeyTransferModal";
+export { FractionTransferModal } from "./FractionTransferModal";
 export { WalletActivityFeed } from "./WalletActivityFeed";
 export { UserProfile } from "./UserProfile";
 export { SellerInvoiceTabs } from "./SellerInvoiceTabs";
