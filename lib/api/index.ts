@@ -2057,6 +2057,62 @@ export async function fetchResaleListings(
   };
 }
 
+/** One historical ask-price data point across an invoice's secondary market listings (issue #413). */
+export interface InvoicePriceHistoryPoint {
+  date: string;
+  price: number;
+  quantity: number;
+}
+
+export interface InvoicePriceHistory {
+  invoice_id: string;
+  /** Ask price of the invoice's current active listing, or null if it isn't currently listed. */
+  current_ask_price: number | null;
+  history: InvoicePriceHistoryPoint[];
+}
+
+function normalizeInvoicePriceHistoryPoint(raw: any): InvoicePriceHistoryPoint {
+  return {
+    date: String(raw.date ?? raw.timestamp ?? raw.listed_at ?? raw.created_at ?? ""),
+    price: Number(raw.price ?? raw.ask_price ?? raw.askPrice ?? 0),
+    quantity: Number(raw.quantity ?? raw.qty ?? 0),
+  };
+}
+
+function normalizeInvoicePriceHistory(raw: any, invoiceId: string): InvoicePriceHistory {
+  const list = Array.isArray(raw) ? raw : raw?.history ?? raw?.points ?? [];
+  const rawCurrent = raw?.current_ask_price ?? raw?.currentAskPrice;
+  return {
+    invoice_id: String(raw?.invoice_id ?? raw?.invoiceId ?? invoiceId),
+    current_ask_price:
+      rawCurrent !== undefined && rawCurrent !== null ? Number(rawCurrent) : null,
+    history: (Array.isArray(list) ? list : []).map(normalizeInvoicePriceHistoryPoint),
+  };
+}
+
+export type PriceHistoryRangeParam = "7d" | "30d" | "all";
+
+/**
+ * Historical ask prices for an invoice's secondary market listings, for the
+ * price history chart on the listing detail page (issue #413). `range` is
+ * passed through to the backend so a long-lived invoice's "all time" history
+ * doesn't need to be fetched (and normalized) just to show the last 7 days.
+ */
+export async function fetchInvoicePriceHistory(
+  invoiceId: string,
+  range: PriceHistoryRangeParam = "all",
+  signal?: AbortSignal
+): Promise<InvoicePriceHistory> {
+  const res = await fetch(
+    `${API_BASE}/marketplace/invoices/${invoiceId}/price-history?range=${range}`,
+    { signal }
+  );
+  if (!res.ok) throw new Error("Failed to fetch invoice price history");
+
+  const payload = await res.json();
+  return normalizeInvoicePriceHistory(payload, invoiceId);
+}
+
 export interface BuyFractionInput {
   listingId: string;
   /** Number of fractions to purchase. */
