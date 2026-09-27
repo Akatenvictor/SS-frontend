@@ -9,6 +9,8 @@ export interface Invoice {
   due_date: string;
   yield_percentage?: number;
   rejection_reason?: string;
+  /** Risk grade (A = safest). Used to gate investing by suitability tier (#391). */
+  risk_rating?: { tier: "A" | "B" | "C" | "D"; score?: number };
   has_more: boolean;
   next_cursor: string | null;
 }
