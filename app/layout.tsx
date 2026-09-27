@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Providers } from "@/components/providers";
+import { AppErrorBoundary } from "@/components/ErrorBoundary";
 import { Navbar } from "@/components/layout";
+import { MobileNav } from "@/components/layout/MobileNav";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import "./globals.css";
@@ -16,7 +18,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <body>
         <TooltipProvider>
           <Providers>

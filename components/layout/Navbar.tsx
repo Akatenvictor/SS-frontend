@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { Wallet, Bookmark, Activity } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -10,7 +11,7 @@ import { useWatchlist } from "@/hooks/useWatchlist";
 import { cn } from "@/lib/utils";
 
 export function Navbar() {
-  const { address, network, isConnected, isConnecting, connect, disconnect, refreshNetwork } =
+  const { address, network, isConnected, isConnecting, disconnect, refreshNetwork } =
     useStellarWallet();
   const { count, isLoading } = useWatchlist();
 
@@ -21,7 +22,7 @@ export function Navbar() {
           StellarSettle
         </Link>
 
-        <nav className="flex items-center gap-4">
+        <nav className="hidden md:flex items-center gap-4">
           <Link href="/marketplace" className="text-sm text-muted-foreground hover:text-foreground">
             Marketplace
           </Link>
@@ -58,17 +59,24 @@ export function Navbar() {
             <WalletChip
               address={address!}
               network={network}
-              onDisconnect={disconnect}
+              onDisconnect={() => disconnect()}
               onNetworkChange={refreshNetwork}
             />
           ) : (
-            <Button onClick={connect} disabled={isConnecting} className="cursor-default">
+            <Button
+              onClick={() => setConnectOpen(true)}
+              disabled={isConnecting}
+              className="cursor-default"
+              data-testid="connect-wallet-button"
+            >
               <Wallet className="mr-2 h-4 w-4" />
               {isConnecting ? "Connecting..." : "Connect Wallet"}
             </Button>
           )}
         </nav>
       </div>
+
+      <ConnectWalletModal open={connectOpen} onOpenChange={setConnectOpen} />
     </header>
   );
 }

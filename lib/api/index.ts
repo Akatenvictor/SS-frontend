@@ -5,8 +5,12 @@ export interface Invoice {
   amount: number;
   raised: number;
   investor_count: number;
-  status: "open" | "funded" | "settled";
+  status: "draft" | "pending" | "open" | "funded" | "settled" | "rejected";
   due_date: string;
+  yield_percentage?: number;
+  rejection_reason?: string;
+  /** Risk grade (A = safest). Used to gate investing by suitability tier (#391). */
+  risk_rating?: { tier: "A" | "B" | "C" | "D"; score?: number };
   has_more: boolean;
   next_cursor: string | null;
 }
@@ -15,6 +19,23 @@ export interface InvoiceDetail extends Invoice {
   description: string;
   investors: { address: string; amount: number; timestamp: string }[];
   document_url: string;
+  /** Any supporting documents beyond the primary one. */
+  documents?: string[];
+  early_repayment?: {
+    amount: number;
+    original_maturity_date: string;
+    new_settlement_date: string;
+  };
+  risk_rating?: {
+    tier: "A" | "B" | "C" | "D";
+    score: number;
+    breakdown: {
+      seller_history: number;
+      invoice_age: number;
+      amount: number;
+      sector: number;
+    };
+  };
 }
 
 export interface InvoicesResponse {
@@ -107,9 +128,40 @@ export interface KycStatus {
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "/api";
 
-export async function fetchInvoices(cursor?: string): Promise<InvoicesResponse> {
+export interface FeatureComponent142Input {
+  label?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface FeatureComponent142State {
+  label: string;
+  metadata: Record<string, unknown>;
+  ready: boolean;
+}
+
+export function FeatureComponent142(
+  input: FeatureComponent142Input = {}
+): FeatureComponent142State {
+  const label = helperFunction142(input.label ?? "New Feature 142");
+
+  return {
+    label,
+    metadata: input.metadata ?? {},
+    ready: label.length > 0,
+  };
+}
+
+export async function fetchInvoices(
+  cursor?: string,
+  paramsObj?: Record<string, string>
+): Promise<InvoicesResponse> {
   const params = new URLSearchParams();
   if (cursor) params.set("cursor", cursor);
+  if (paramsObj) {
+    Object.entries(paramsObj).forEach(([k, v]) => {
+      if (v) params.set(k, v);
+    });
+  }
   const res = await fetch(`${API_BASE}/invoices?${params}`);
   if (!res.ok) throw new Error("Failed to fetch invoices");
   return res.json();
@@ -118,6 +170,15 @@ export async function fetchInvoices(cursor?: string): Promise<InvoicesResponse> 
 export async function fetchInvoiceDetail(id: string): Promise<InvoiceDetail> {
   const res = await fetch(`${API_BASE}/invoices/${id}`);
   if (!res.ok) throw new Error("Failed to fetch invoice detail");
+  return res.json();
+}
+
+/** Protocol-wide status, including the minimum investment floor the contract
+ * enforces (issue #116) ? must be read from here rather than hardcoded, since
+ * it can change independently of any one invoice. */
+export async function fetchProtocolStatus(): Promise<ProtocolStatus> {
+  const res = await fetch(`${API_BASE}/protocol/status`);
+  if (!res.ok) throw new Error("Failed to fetch protocol status");
   return res.json();
 }
 
