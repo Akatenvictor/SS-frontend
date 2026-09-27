@@ -5,6 +5,7 @@ import { fetchInvestorPayouts, PayoutRecord } from "@/lib/api";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { TxHash } from "@/components/ui/tx-hash";
 
 export function PayoutHistoryTable() {
   const {
@@ -62,6 +63,7 @@ export function PayoutHistoryTable() {
               <th className="p-3 font-medium">Amount Received</th>
               <th className="p-3 font-medium">Yield</th>
               <th className="p-3 font-medium">Settled At</th>
+              <th className="p-3 font-medium">Transaction</th>
             </tr>
           </thead>
           <tbody className="divide-y">
@@ -84,6 +86,17 @@ export function PayoutHistoryTable() {
                   <td className="p-3">{row.yield}%</td>
                   <td className="p-3 text-muted-foreground">
                     {new Date(row.settledAt).toLocaleDateString()}
+                  </td>
+                  <td className="p-3">
+                    {row.transaction_hash || row.transactionHash ? (
+                      <TxHash
+                        hash={(row.transaction_hash ?? row.transactionHash) as string}
+                        className="text-xs"
+                        testId={`payout-tx-${row.invoiceId}`}
+                      />
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
                   </td>
                 </tr>
               );
