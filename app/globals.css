@@ -84,3 +84,20 @@ body {
   background-color: var(--background);
   color: var(--foreground);
 }
+
+/* #386 — smooth light/dark transition. In @layer base so any component's own
+   transition-* utility still wins. next-themes applies the stored/system theme
+   via an inline script before first paint, so there is no flash on load; this
+   only animates an explicit switch. Skipped for users who prefer reduced
+   motion. */
+@layer base {
+  @media (prefers-reduced-motion: no-preference) {
+    *,
+    ::before,
+    ::after {
+      transition-property: background-color, border-color, color, fill, stroke;
+      transition-duration: 200ms;
+      transition-timing-function: ease-in-out;
+    }
+  }
+}
