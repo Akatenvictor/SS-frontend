@@ -1,74 +1,18 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import {
-  connectWallet,
-  getAddress,
-  getNetwork,
-  type Network,
-} from "@/lib/stellar";
+/**
+ * Backwards-compatible wallet hook.
+ *
+ * Wallet state is now owned by `WalletProvider` (issue #379) so that every
+ * consumer — the desktop navbar, the mobile tab bar, gated actions — observes
+ * the same session. This hook simply re-exports the context so existing call
+ * sites keep working unchanged.
+ */
 
-interface WalletState {
-  address: string | null;
-  network: Network | null;
-  isConnected: boolean;
-  isConnecting: boolean;
-  isInitializing: boolean;
-  connect: () => Promise<void>;
-  disconnect: () => void;
-  refreshNetwork: () => Promise<void>;
-}
+import { useWallet, type WalletContextValue } from "@/context/WalletContext";
 
-export function useStellarWallet(): WalletState {
-  const [address, setAddress] = useState<string | null>(null);
-  const [network, setNetwork] = useState<Network | null>(null);
-  const [isConnecting, setIsConnecting] = useState(false);
-  const [isInitializing, setIsInitializing] = useState(true);
+export type { WalletContextValue };
 
-  useEffect(() => {
-    async function init() {
-      const addr = await getAddress();
-      if (addr) {
-        setAddress(addr);
-        const net = await getNetwork();
-        setNetwork(net);
-      }
-      setIsInitializing(false);
-    }
-    init();
-  }, []);
-
-  const connect = useCallback(async () => {
-    setIsConnecting(true);
-    try {
-      const result = await connectWallet();
-      if (result) {
-        setAddress(result.address);
-        setNetwork(result.network);
-      }
-    } finally {
-      setIsConnecting(false);
-    }
-  }, []);
-
-  const disconnect = useCallback(() => {
-    setAddress(null);
-    setNetwork(null);
-  }, []);
-
-  const refreshNetwork = useCallback(async () => {
-    const net = await getNetwork();
-    setNetwork(net);
-  }, []);
-
-  return {
-    address,
-    network,
-    isConnected: address !== null,
-    isConnecting,
-    isInitializing,
-    connect,
-    disconnect,
-    refreshNetwork,
-  };
+export function useStellarWallet(): WalletContextValue {
+  return useWallet();
 }

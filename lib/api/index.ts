@@ -9,6 +9,8 @@ export interface Invoice {
   due_date: string;
   yield_percentage?: number;
   rejection_reason?: string;
+  /** Risk grade (A = safest). Used to gate investing by suitability tier (#391). */
+  risk_rating?: { tier: "A" | "B" | "C" | "D"; score?: number };
   has_more: boolean;
   next_cursor: string | null;
 }
@@ -17,6 +19,8 @@ export interface InvoiceDetail extends Invoice {
   description: string;
   investors: { address: string; amount: number; timestamp: string }[];
   document_url: string;
+  /** Any supporting documents beyond the primary one. */
+  documents?: string[];
   early_repayment?: {
     amount: number;
     original_maturity_date: string;
@@ -367,14 +371,62 @@ export interface NotificationItem {
   body?: string;
   /** Where clicking the notification should navigate, e.g. /marketplace/123. */
   link?: string;
+  /**
+   * Event kind driving the icon, copy and default route in the notification
+   * centre (issue #377): settlement, kyc, listing, invoice or general.
+   */
+  type?: string;
+  /** Related invoice, when the notification is about one. */
+  invoice_id?: string;
   read: boolean;
   created_at?: string;
+}
+
+/**
+ * Backends have shipped the event kind under several names (`type`,
+ * `event_type`, `eventType`) and the read flag under both `read` and
+ * `is_read`, so responses are normalised once here instead of at every
+ * call site.
+ */
+export function normalizeNotification(raw: any): NotificationItem {
+  return {
+    ...raw,
+    id: raw.id,
+    title: raw.title ?? undefined,
+    message: raw.message ?? undefined,
+    body: raw.body ?? raw.description ?? undefined,
+    link: raw.link ?? raw.url ?? undefined,
+    type: raw.type ?? raw.event_type ?? raw.eventType ?? undefined,
+    invoice_id: raw.invoice_id ?? raw.invoiceId ?? undefined,
+    read: Boolean(raw.read ?? raw.is_read ?? false),
+    created_at: raw.created_at ?? raw.createdAt ?? undefined,
+  };
+}
+
+/** Newest first — the order the notification centre renders in. */
+export function sortNotificationsByRecency(
+  notifications: NotificationItem[]
+): NotificationItem[] {
+  return [...notifications].sort((a, b) => {
+    const aTime = a.created_at ? new Date(a.created_at).getTime() : 0;
+    const bTime = b.created_at ? new Date(b.created_at).getTime() : 0;
+    // Items with no timestamp sort last rather than jumping to the top.
+    if (a.created_at && !b.created_at) return -1;
+    if (!a.created_at && b.created_at) return 1;
+    return bTime - aTime;
+  });
 }
 
 export async function fetchNotifications(): Promise<NotificationItem[]> {
   const res = await fetch(`${API_BASE}/notifications`);
   if (!res.ok) throw new Error("Failed to fetch notifications");
-  return res.json();
+  const payload = await res.json();
+  const list: any[] = Array.isArray(payload)
+    ? payload
+    : Array.isArray(payload?.notifications)
+      ? payload.notifications
+      : [];
+  return sortNotificationsByRecency(list.map(normalizeNotification));
 }
 
 export async function fetchUnreadCount(): Promise<{ count: number }> {
@@ -1909,4 +1961,680 @@ export async function fetchFeeTier(): Promise<FeeTierInfo> {
   const res = await fetch(`${API_BASE}/protocol/fee-tier`);
   if (!res.ok) throw new Error("Failed to fetch fee tier");
   return normalizeFeeTierInfo(await res.json());
+}
+
+/* ─── Secondary market — resale listings (issue #380) ────────────────────── */
+
+export type ResaleListingStatus = "active" | "sold" | "cancelled";
+
+/** Invoice categories a listing can be filtered by. */
+export const RESALE_INVOICE_TYPES = [
+  "trade_receivable",
+  "supply_chain",
+  "promissory_note",
+  "equipment_lease",
+  "service_contract",
+] as const;
+
+export type ResaleInvoiceType = (typeof RESALE_INVOICE_TYPES)[number];
+
+export interface ResaleListing {
+  id: string;
+  invoice_id: string;
+  invoice_title: string;
+  /** Invoice category, used by the "invoice type" filter. */
+  invoice_type: string;
+  /** Wallet that listed the fractions. */
+  seller: string;
+  /** Fractions the seller originally listed. */
+  quantity: number;
+  /** Fractions still on offer — drops to 0 once sold out. */
+  remaining_quantity: number;
+  /** Ask price per fraction, in the asset's smallest unit. */
+  ask_price: number;
+  /** Value one fraction pays out at maturity; the basis for implied yield. */
+  maturity_value: number;
+  /** Maturity date of the underlying invoice (ISO 8601). */
+  maturity_date: string;
+  listed_at: string;
+  status: ResaleListingStatus;
+}
+
+export interface ResaleListingsResponse {
+  listings: ResaleListing[];
+  has_more: boolean;
+  next_cursor: string | null;
+}
+
+/** Query parameters accepted by the listings endpoint. */
+export interface ResaleListingFilters {
+  invoiceType?: string;
+  minYield?: number;
+  maxYield?: number;
+  minPrice?: number;
+  maxPrice?: number;
+  /** Only listings maturing within this many days. */
+  maxDaysToMaturity?: number;
+}
+
+function normalizeResaleListing(raw: any): ResaleListing {
+  const quantity = Number(raw.quantity ?? raw.shares ?? raw.shares_offered ?? 0);
+  const remaining = Number(
+    raw.remaining_quantity ?? raw.remaining ?? raw.shares_remaining ?? quantity
+  );
+
+  return {
+    id: String(raw.id ?? raw.listing_id),
+    invoice_id: String(raw.invoice_id ?? raw.invoiceId ?? ""),
+    invoice_title: String(raw.invoice_title ?? raw.invoiceTitle ?? raw.title ?? ""),
+    invoice_type: String(raw.invoice_type ?? raw.invoiceType ?? "other"),
+    seller: String(raw.seller ?? raw.seller_address ?? ""),
+    quantity,
+    remaining_quantity: remaining,
+    ask_price: Number(raw.ask_price ?? raw.askPrice ?? raw.price ?? 0),
+    maturity_value: Number(
+      raw.maturity_value ?? raw.maturityValue ?? raw.face_value ?? 0
+    ),
+    maturity_date: String(raw.maturity_date ?? raw.maturityDate ?? raw.due_date ?? ""),
+    listed_at: String(raw.listed_at ?? raw.listedAt ?? raw.created_at ?? ""),
+    status: (raw.status ?? "active") as ResaleListingStatus,
+  };
+}
+
+function buildResaleListingParams(filters: ResaleListingFilters = {}): URLSearchParams {
+  const params = new URLSearchParams();
+  if (filters.invoiceType && filters.invoiceType !== "all") {
+    params.set("invoice_type", filters.invoiceType);
+  }
+  if (filters.minYield !== undefined && filters.minYield > 0) {
+    params.set("min_yield", String(filters.minYield));
+  }
+  if (filters.maxYield !== undefined && filters.maxYield > 0) {
+    params.set("max_yield", String(filters.maxYield));
+  }
+  if (filters.minPrice !== undefined && filters.minPrice > 0) {
+    params.set("min_price", String(filters.minPrice));
+  }
+  if (filters.maxPrice !== undefined && filters.maxPrice > 0) {
+    params.set("max_price", String(filters.maxPrice));
+  }
+  if (filters.maxDaysToMaturity !== undefined && filters.maxDaysToMaturity > 0) {
+    params.set("max_days_to_maturity", String(filters.maxDaysToMaturity));
+  }
+  return params;
+}
+
+export async function fetchResaleListings(
+  filters: ResaleListingFilters = {},
+  signal?: AbortSignal
+): Promise<ResaleListingsResponse> {
+  const params = buildResaleListingParams(filters);
+  const query = params.toString();
+  const res = await fetch(
+    `${API_BASE}/marketplace/listings${query ? `?${query}` : ""}`,
+    { signal }
+  );
+  if (!res.ok) throw new Error("Failed to fetch resale listings");
+
+  const payload = await res.json();
+  const rawList: any[] = Array.isArray(payload)
+    ? payload
+    : Array.isArray(payload?.listings)
+      ? payload.listings
+      : [];
+
+  return {
+    listings: rawList.map(normalizeResaleListing),
+    has_more: Boolean(payload?.has_more ?? false),
+    next_cursor: payload?.next_cursor ?? null,
+  };
+}
+
+/** One historical ask-price data point across an invoice's secondary market listings (issue #413). */
+export interface InvoicePriceHistoryPoint {
+  date: string;
+  price: number;
+  quantity: number;
+}
+
+export interface InvoicePriceHistory {
+  invoice_id: string;
+  /** Ask price of the invoice's current active listing, or null if it isn't currently listed. */
+  current_ask_price: number | null;
+  history: InvoicePriceHistoryPoint[];
+}
+
+function normalizeInvoicePriceHistoryPoint(raw: any): InvoicePriceHistoryPoint {
+  return {
+    date: String(raw.date ?? raw.timestamp ?? raw.listed_at ?? raw.created_at ?? ""),
+    price: Number(raw.price ?? raw.ask_price ?? raw.askPrice ?? 0),
+    quantity: Number(raw.quantity ?? raw.qty ?? 0),
+  };
+}
+
+function normalizeInvoicePriceHistory(raw: any, invoiceId: string): InvoicePriceHistory {
+  const list = Array.isArray(raw) ? raw : raw?.history ?? raw?.points ?? [];
+  const rawCurrent = raw?.current_ask_price ?? raw?.currentAskPrice;
+  return {
+    invoice_id: String(raw?.invoice_id ?? raw?.invoiceId ?? invoiceId),
+    current_ask_price:
+      rawCurrent !== undefined && rawCurrent !== null ? Number(rawCurrent) : null,
+    history: (Array.isArray(list) ? list : []).map(normalizeInvoicePriceHistoryPoint),
+  };
+}
+
+export type PriceHistoryRangeParam = "7d" | "30d" | "all";
+
+/**
+ * Historical ask prices for an invoice's secondary market listings, for the
+ * price history chart on the listing detail page (issue #413). `range` is
+ * passed through to the backend so a long-lived invoice's "all time" history
+ * doesn't need to be fetched (and normalized) just to show the last 7 days.
+ */
+export async function fetchInvoicePriceHistory(
+  invoiceId: string,
+  range: PriceHistoryRangeParam = "all",
+  signal?: AbortSignal
+): Promise<InvoicePriceHistory> {
+  const res = await fetch(
+    `${API_BASE}/marketplace/invoices/${invoiceId}/price-history?range=${range}`,
+    { signal }
+  );
+  if (!res.ok) throw new Error("Failed to fetch invoice price history");
+
+  const payload = await res.json();
+  return normalizeInvoicePriceHistory(payload, invoiceId);
+}
+
+export interface BuyFractionInput {
+  listingId: string;
+  /** Number of fractions to purchase. */
+  quantity: number;
+}
+
+export interface BuyFractionResult {
+  success: boolean;
+  transaction_hash?: string;
+  /** Remaining quantity reported by the contract after the transfer. */
+  remaining_quantity?: number;
+}
+
+/**
+ * Submits the Soroban `transfer_fraction` contract call that moves the
+ * requested fractions from the seller to the buyer.
+ */
+export async function buyFraction(
+  input: BuyFractionInput,
+  token?: string
+): Promise<BuyFractionResult> {
+  const res = await fetch(`${API_BASE}/marketplace/listings/${input.listingId}/buy`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders(token) },
+    body: JSON.stringify({ quantity: input.quantity }),
+  });
+  if (!res.ok) {
+    const message = await readConflictErrorMessage(res, "Failed to buy fraction");
+    throw new Error(message);
+  }
+  return res.json();
+}
+
+// ─── Admin invoice review queue (issue #384) ─────────────────────────────
+
+export interface PendingInvoice {
+  id: string;
+  title: string;
+  seller: string;
+  face_value: number;
+  submission_date: string;
+  document_url?: string;
+}
+
+export interface PendingInvoicesResponse {
+  invoices: PendingInvoice[];
+}
+
+function normalizePendingInvoice(raw: any): PendingInvoice {
+  return {
+    id: raw.id ?? raw.invoiceId ?? raw.invoice_id ?? "",
+    title: raw.title ?? raw.invoice_title ?? "",
+    seller: raw.seller ?? raw.sellerWallet ?? raw.seller_wallet ?? "",
+    face_value:
+      Number(raw.face_value ?? raw.faceValue ?? raw.amount ?? 0),
+    submission_date:
+      raw.submission_date ?? raw.submissionDate ?? raw.submitted_at ?? raw.created_at ?? "",
+    document_url: raw.document_url ?? raw.documentUrl ?? undefined,
+  };
+}
+
+export async function fetchPendingInvoices(
+  token?: string
+): Promise<PendingInvoice[]> {
+  const res = await fetch(`${API_BASE}/admin/invoices?status=pending`, {
+    headers: authHeaders(token),
+  });
+  if (!res.ok) throw new Error("Failed to fetch pending invoices");
+  const payload = await res.json();
+  const list: any[] = Array.isArray(payload)
+    ? payload
+    : payload.invoices ?? [];
+  return list.map(normalizePendingInvoice);
+}
+
+export interface ReviewedInvoice extends PendingInvoice {
+  review_status: "approved" | "rejected";
+  reviewed_at: string;
+  rejection_reason?: string;
+}
+
+export interface ReviewedInvoicesResponse {
+  invoices: ReviewedInvoice[];
+  has_more: boolean;
+  next_cursor: string | null;
+}
+
+function normalizeReviewedInvoice(raw: any): ReviewedInvoice {
+  const base = normalizePendingInvoice(raw);
+  return {
+    ...base,
+    review_status: raw.review_status ?? raw.reviewStatus ?? raw.status ?? "approved",
+    reviewed_at: raw.reviewed_at ?? raw.reviewedAt ?? raw.updated_at ?? "",
+    rejection_reason: raw.rejection_reason ?? raw.rejectionReason ?? undefined,
+  };
+}
+
+export async function fetchReviewedInvoices(
+  status: "approved" | "rejected",
+  cursor?: string,
+  token?: string
+): Promise<ReviewedInvoicesResponse> {
+  const params = new URLSearchParams({ status });
+  if (cursor) params.set("cursor", cursor);
+  const res = await fetch(`${API_BASE}/admin/invoices?${params}`, {
+    headers: authHeaders(token),
+  });
+  if (!res.ok) throw new Error("Failed to fetch reviewed invoices");
+  const payload = await res.json();
+  const list: any[] = Array.isArray(payload)
+    ? payload
+    : payload.invoices ?? [];
+  return {
+    invoices: list.map(normalizeReviewedInvoice),
+    has_more: payload.has_more ?? false,
+    next_cursor: payload.next_cursor ?? null,
+  };
+}
+
+export async function approveInvoice(
+  invoiceId: string,
+  token?: string
+): Promise<{ success: boolean }> {
+  const res = await fetch(`${API_BASE}/admin/invoices/${invoiceId}/approve`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders(token) },
+  });
+  if (!res.ok) throw new Error("Failed to approve invoice");
+  return res.json();
+}
+
+export async function rejectInvoice(
+  invoiceId: string,
+  reason: string,
+  token?: string
+): Promise<{ success: boolean }> {
+  const res = await fetch(`${API_BASE}/admin/invoices/${invoiceId}/reject`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders(token) },
+    body: JSON.stringify({ reason }),
+  });
+  if (!res.ok) throw new Error("Failed to reject invoice");
+  return res.json();
+}
+
+// ─── Issuer earnings dashboard (issue #387) ──────────────────────────────
+
+export interface IssuerEarningsSummary {
+  gross_proceeds: number;
+  platform_fee: number;
+  net_payout: number;
+}
+
+export type IssuerPayoutStatus = "pending" | "paid" | "processing";
+
+export interface IssuerInvoiceEarning {
+  invoice_id: string;
+  invoice_title: string;
+  face_value: number;
+  funded_date: string;
+  gross_proceeds: number;
+  platform_fee: number;
+  net_payout: number;
+  payout_status: IssuerPayoutStatus;
+  transaction_hash?: string;
+}
+
+export interface IssuerEarningsResponse {
+  summary: IssuerEarningsSummary;
+  invoices: IssuerInvoiceEarning[];
+  has_more: boolean;
+  next_cursor: string | null;
+}
+
+function normalizeIssuerEarningsSummary(raw: any): IssuerEarningsSummary {
+  return {
+    gross_proceeds: Number(raw.gross_proceeds ?? raw.grossProceeds ?? 0),
+    platform_fee: Number(raw.platform_fee ?? raw.platformFee ?? 0),
+    net_payout: Number(raw.net_payout ?? raw.netPayout ?? 0),
+  };
+}
+
+function normalizeIssuerInvoiceEarning(raw: any): IssuerInvoiceEarning {
+  return {
+    invoice_id: raw.invoice_id ?? raw.invoiceId ?? raw.id ?? "",
+    invoice_title: raw.invoice_title ?? raw.invoiceTitle ?? raw.title ?? "",
+    face_value: Number(raw.face_value ?? raw.faceValue ?? raw.amount ?? 0),
+    funded_date: raw.funded_date ?? raw.fundedDate ?? raw.funded_at ?? "",
+    gross_proceeds: Number(raw.gross_proceeds ?? raw.grossProceeds ?? 0),
+    platform_fee: Number(raw.platform_fee ?? raw.platformFee ?? 0),
+    net_payout: Number(raw.net_payout ?? raw.netPayout ?? 0),
+    payout_status: raw.payout_status ?? raw.payoutStatus ?? "pending",
+    transaction_hash: raw.transaction_hash ?? raw.transactionHash ?? undefined,
+  };
+}
+
+export async function fetchIssuerEarnings(
+  cursor?: string,
+  token?: string
+): Promise<IssuerEarningsResponse> {
+  const params = new URLSearchParams();
+  if (cursor) params.set("cursor", cursor);
+  const res = await fetch(`${API_BASE}/issuer/earnings?${params}`, {
+    headers: authHeaders(token),
+  });
+  if (!res.ok) throw new Error("Failed to fetch issuer earnings");
+  const payload = await res.json();
+  return {
+    summary: normalizeIssuerEarningsSummary(payload.summary ?? payload),
+    invoices: (payload.invoices ?? []).map(normalizeIssuerInvoiceEarning),
+    has_more: payload.has_more ?? false,
+    next_cursor: payload.next_cursor ?? null,
+  };
+}
+
+export async function withdrawIssuerEarnings(
+  invoiceId: string,
+  token?: string
+): Promise<{ success: boolean; transaction_hash?: string }> {
+  const res = await fetch(`${API_BASE}/issuer/earnings/${invoiceId}/withdraw`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders(token) },
+  });
+  if (!res.ok) throw new Error("Failed to submit withdrawal");
+  return res.json();
+}
+
+// ─── Invoice funding progress polling (issue #388) ───────────────────────
+
+export interface InvoiceFundingProgress {
+  invoice_id: string;
+  raised: number;
+  target: number;
+  investor_count: number;
+  is_fully_funded: boolean;
+}
+
+function normalizeInvoiceFundingProgress(raw: any, invoiceId: string): InvoiceFundingProgress {
+  const target = Number(raw.target ?? raw.amount ?? raw.face_value ?? 0);
+  const raised = Number(raw.raised ?? raw.funded ?? raw.raised_amount ?? 0);
+  return {
+    invoice_id: raw.invoice_id ?? raw.invoiceId ?? invoiceId,
+    raised,
+    target,
+    investor_count: Number(raw.investor_count ?? raw.investorCount ?? 0),
+    is_fully_funded:
+      typeof raw.is_fully_funded === "boolean"
+        ? raw.is_fully_funded
+        : target > 0 && raised >= target,
+  };
+}
+
+export async function fetchInvoiceFundingProgress(
+  invoiceId: string
+): Promise<InvoiceFundingProgress> {
+  const res = await fetch(
+    `${API_BASE}/invoices/${encodeURIComponent(invoiceId)}/funding-progress`
+  );
+  if (!res.ok) throw new Error("Failed to fetch funding progress");
+  return normalizeInvoiceFundingProgress(await res.json(), invoiceId);
+}
+
+// ─── Investor accreditation gating (issue #389) ──────────────────────────
+
+export type AccreditationTier = "unaccredited" | "accredited" | "qualified";
+
+export interface AccreditationStatus {
+  wallet: string;
+  tier: AccreditationTier;
+  /** Minimum face value (XLM) that requires accreditation. */
+  high_value_threshold: number;
+}
+
+const ACCREDITATION_TIERS: AccreditationTier[] = [
+  "unaccredited",
+  "accredited",
+  "qualified",
+];
+
+function normalizeAccreditationTier(raw: any): AccreditationTier {
+  const v = String(raw ?? "").toLowerCase();
+  if ((ACCREDITATION_TIERS as string[]).includes(v)) return v as AccreditationTier;
+  if (v === "none" || v === "basic") return "unaccredited";
+  if (v === "standard" || v === "verified") return "accredited";
+  if (v === "institutional" || v === "sophisticated") return "qualified";
+  return "unaccredited";
+}
+
+function normalizeAccreditationStatus(raw: any, wallet: string): AccreditationStatus {
+  return {
+    wallet: raw.wallet ?? raw.address ?? wallet,
+    tier: normalizeAccreditationTier(raw.tier ?? raw.accreditation_tier ?? raw.accreditationTier),
+    high_value_threshold: Number(
+      raw.high_value_threshold ?? raw.highValueThreshold ?? raw.threshold ?? 100_000
+    ),
+  };
+}
+
+export async function fetchAccreditationStatus(
+  walletAddress: string,
+  token?: string
+): Promise<AccreditationStatus> {
+  const res = await fetch(
+    `${API_BASE}/investors/${encodeURIComponent(walletAddress)}/accreditation`,
+    { headers: authHeaders(token) }
+  );
+  if (!res.ok) throw new Error("Failed to fetch accreditation status");
+  return normalizeAccreditationStatus(await res.json(), walletAddress);
+}
+
+/** True if the investor's accreditation tier allows investing in a given invoice face value. */
+export function isAccreditedForInvoice(
+  tier: AccreditationTier,
+  faceValue: number,
+  threshold: number
+): boolean {
+  if (faceValue < threshold) return true;
+  return tier === "accredited" || tier === "qualified";
+}
+
+// ─── Invoice holder dividend claim page (issue #350) ─────────────────────
+
+export interface DividendCycle {
+  cycle: string;
+  cycle_id?: string;
+  amount: number;
+  distribution_date: string;
+  claimable: boolean;
+  claimed?: boolean;
+  transaction_hash?: string | null;
+}
+
+export interface DividendClaimRecord {
+  cycle: string;
+  amount: number;
+  claimed_at: string;
+  transaction_hash: string;
+}
+
+export interface InvestorDividendsResponse {
+  total_earned: number;
+  total_pending: number;
+  claimable: DividendCycle[];
+  history: DividendClaimRecord[];
+}
+
+function normalizeDividendCycle(raw: any): DividendCycle {
+  const cycle = String(raw.cycle ?? raw.cycle_id ?? raw.cycleId ?? raw.id ?? "");
+  const amount = Number(raw.amount ?? raw.claimable_amount ?? 0);
+  const distribution_date = String(
+    raw.distribution_date ?? raw.distributionDate ?? raw.date ?? raw.created_at ?? ""
+  );
+  const claimed = Boolean(raw.claimed ?? false);
+  return {
+    cycle,
+    cycle_id: raw.cycle_id ?? raw.cycleId ?? cycle,
+    amount,
+    distribution_date,
+    claimable: typeof raw.claimable === "boolean" ? raw.claimable : !claimed,
+    claimed,
+    transaction_hash: raw.transaction_hash ?? raw.transactionHash ?? null,
+  };
+}
+
+function normalizeDividendClaimRecord(raw: any): DividendClaimRecord {
+  return {
+    cycle: String(raw.cycle ?? raw.cycle_id ?? ""),
+    amount: Number(raw.amount ?? 0),
+    claimed_at: String(raw.claimed_at ?? raw.claimedAt ?? raw.date ?? ""),
+    transaction_hash: String(raw.transaction_hash ?? raw.transactionHash ?? raw.tx_hash ?? ""),
+  };
+}
+
+function normalizeInvestorDividends(raw: any): InvestorDividendsResponse {
+  const claimableRaw: any[] = Array.isArray(raw.claimable)
+    ? raw.claimable
+    : Array.isArray(raw.claimsByCycle)
+      ? raw.claimsByCycle
+      : Array.isArray(raw.cycles)
+        ? raw.cycles
+        : [];
+  const historyRaw: any[] = Array.isArray(raw.history)
+    ? raw.history
+    : Array.isArray(raw.claimed)
+      ? raw.claimed
+      : [];
+  const claimable = claimableRaw.map(normalizeDividendCycle);
+  const history = historyRaw.map(normalizeDividendClaimRecord);
+  const total_pending = Number(
+    raw.total_pending ?? raw.totalPending ?? raw.pendingClaims ?? 0
+  );
+  const total_earned = Number(
+    raw.total_earned ?? raw.totalEarned ?? raw.totalEarnedXlm ?? 0
+  );
+  // Aggregate fallback when backend only sends cycles.
+  const pendingFallback = claimable
+    .filter((c) => c.claimable && !c.claimed)
+    .reduce((sum, c) => sum + c.amount, 0);
+  const earnedFallback =
+    pendingFallback + history.reduce((sum, h) => sum + h.amount, 0);
+  return {
+    total_earned: total_earned || earnedFallback,
+    total_pending: raw.total_pending !== undefined ? total_pending : pendingFallback,
+    claimable,
+    history,
+  };
+}
+
+export async function fetchInvestorDividends(): Promise<InvestorDividendsResponse> {
+  const res = await fetch(`${API_BASE}/investor/dividends`);
+  if (!res.ok) throw new Error("Failed to fetch dividends");
+  return normalizeInvestorDividends(await res.json());
+}
+
+export async function claimDividendCycle(
+  cycleId: string
+): Promise<{ success: boolean; transaction_hash?: string }> {
+  const res = await fetch(
+    `${API_BASE}/investor/dividends/${encodeURIComponent(cycleId)}/claim`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    }
+  );
+  if (!res.ok) throw new Error("Failed to claim dividend");
+  return res.json();
+}
+
+export async function claimAllDividends(): Promise<InvestorDividendsResponse> {
+  const res = await fetch(`${API_BASE}/investor/claim-dividends`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+  });
+  if (!res.ok) throw new Error("Failed to claim dividends");
+  const payload = await res.json();
+  // Backend may return the refreshed summary or just success.
+  if (payload && (payload.claimable || payload.claimsByCycle || payload.total_earned !== undefined)) {
+    return normalizeInvestorDividends(payload);
+  }
+  return fetchInvestorDividends();
+}
+
+// ─── Invoice rating widget (issue #348) ──────────────────────────────────
+
+export interface InvoiceRatingSummary {
+  invoice_id: string;
+  average_rating: number;
+  rating_count: number;
+  user_rating?: number | null;
+}
+
+function normalizeInvoiceRating(raw: any, invoiceId: string): InvoiceRatingSummary {
+  return {
+    invoice_id: raw.invoice_id ?? raw.invoiceId ?? invoiceId,
+    average_rating: Number(raw.average_rating ?? raw.averageRating ?? raw.average ?? 0),
+    rating_count: Number(raw.rating_count ?? raw.ratingCount ?? raw.count ?? 0),
+    user_rating:
+      raw.user_rating !== undefined && raw.user_rating !== null
+        ? Number(raw.user_rating)
+        : (raw.userRating !== undefined && raw.userRating !== null
+          ? Number(raw.userRating)
+          : null),
+  };
+}
+
+export async function fetchInvoiceRating(
+  invoiceId: string
+): Promise<InvoiceRatingSummary> {
+  const res = await fetch(
+    `${API_BASE}/invoices/${encodeURIComponent(invoiceId)}/rating`
+  );
+  if (!res.ok) throw new Error("Failed to fetch invoice rating");
+  return normalizeInvoiceRating(await res.json(), invoiceId);
+}
+
+export async function submitInvoiceRating(
+  invoiceId: string,
+  rating: number,
+  walletAddress?: string,
+  token?: string
+): Promise<InvoiceRatingSummary> {
+  const res = await fetch(
+    `${API_BASE}/invoices/${encodeURIComponent(invoiceId)}/rating`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...authHeaders(token) },
+      body: JSON.stringify({ rating, wallet: walletAddress }),
+    }
+  );
+  if (!res.ok) throw new Error("Failed to submit rating");
+  return normalizeInvoiceRating(await res.json(), invoiceId);
 }

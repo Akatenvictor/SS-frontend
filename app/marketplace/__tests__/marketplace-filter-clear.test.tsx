@@ -16,6 +16,14 @@ vi.mock("@/lib/logger", () => ({
   logError: vi.fn(),
 }));
 
+// The page calls the real router hooks, which throw without a mounted app
+// router. This suite renders the page in isolation, so stub them out.
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), back: vi.fn() }),
+  usePathname: () => "/marketplace",
+  useSearchParams: () => new URLSearchParams(),
+}));
+
 import { useInfiniteQuery } from "@tanstack/react-query";
 
 const mockUseInfiniteQuery = vi.mocked(useInfiniteQuery);
