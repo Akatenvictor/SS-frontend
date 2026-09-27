@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactElement } from "react";
 import { NotificationPreferences } from "../NotificationPreferences";
@@ -97,5 +97,67 @@ describe("NotificationPreferences", () => {
 
         await waitFor(() => expect(toast.error).toHaveBeenCalled());
         expect(toggle).toHaveAttribute("aria-checked", "false");
+    });
+
+    it("groups seller and investor event types into separate sections", async () => {
+        vi.spyOn(api, "fetchNotificationPreferences").mockResolvedValue(basePreferences);
+
+        renderWithClient(<NotificationPreferences />);
+
+        const sellerGroup = await screen.findByRole("region", { name: "Seller events" });
+        const investorGroup = screen.getByRole("region", { name: "Investor events" });
+
+        expect(
+            within(sellerGroup).getByLabelText("Email notifications for Invoice funded")
+        ).toBeInTheDocument();
+        expect(
+            within(sellerGroup).getByLabelText("Email notifications for Invoice settled")
+        ).toBeInTheDocument();
+        expect(
+            within(sellerGroup).getByLabelText("Email notifications for Invoice rejected")
+        ).toBeInTheDocument();
+        expect(
+            within(sellerGroup).getByLabelText("Email notifications for Deadline extended")
+        ).toBeInTheDocument();
+
+        expect(
+            within(investorGroup).getByLabelText("Email notifications for New invoice")
+        ).toBeInTheDocument();
+        expect(
+            within(investorGroup).getByLabelText("Email notifications for Funding milestone")
+        ).toBeInTheDocument();
+        expect(
+            within(investorGroup).getByLabelText("Email notifications for Settlement")
+        ).toBeInTheDocument();
+        expect(
+            within(investorGroup).getByLabelText("Email notifications for Invoice matured")
+        ).toBeInTheDocument();
+    });
+
+    it("lists every event type with disabled toggles when the API omits it", async () => {
+        vi.spyOn(api, "fetchNotificationPreferences").mockResolvedValue([basePreferences[0]]);
+
+        renderWithClient(<NotificationPreferences />);
+
+        const deadlineToggle = await screen.findByLabelText(
+            "Email notifications for Deadline extended"
+        );
+        expect(deadlineToggle).toHaveAttribute("aria-checked", "false");
+        expect(
+            screen.getByLabelText("In-app notifications for Invoice matured")
+        ).toHaveAttribute("aria-checked", "false");
+    });
+
+    it("saves a toggle for an event type the API did not return", async () => {
+        const updateSpy = vi
+            .spyOn(api, "updateNotificationPreference")
+            .mockResolvedValue({ success: true });
+        vi.spyOn(api, "fetchNotificationPreferences").mockResolvedValue([]);
+
+        renderWithClient(<NotificationPreferences />);
+
+        fireEvent.click(await screen.findByLabelText("Email notifications for Invoice matured"));
+
+        await waitFor(() => expect(updateSpy).toHaveBeenCalledWith("invoice_matured", "email", true));
     });
 });

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { renderHook, act } from "@testing-library/react";
+import { renderHook, act, waitFor } from "@testing-library/react";
 import React from "react";
 import { AuthProvider, useAuth } from "../AuthContext";
 import { toast } from "sonner";
@@ -23,11 +23,12 @@ describe("AuthContext - Wallet Challenge-Verify Authentication Flow", () => {
   const mockAddress = "GPUBLICKEY1234567890STEL";
   const mockChallengeXdr = "AAAAA_CHALLENGE_XDR_MOCK";
   const mockSignedXdr = "AAAAA_SIGNED_XDR_MOCK";
-  const mockJwt = "mock.jwt.token";
+  const mockJwt = "eyJhbGciOiJub25lIn0.eyJleHAiOjQ3MDAwMDAwMDB9.sig";
 
   beforeEach(() => {
     vi.clearAllMocks();
     vi.restoreAllMocks();
+    localStorage.clear();
     
     // Default fetch mock setup
     global.fetch = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
@@ -76,8 +77,27 @@ describe("AuthContext - Wallet Challenge-Verify Authentication Flow", () => {
 
     expect(result.current.jwt).toBe(mockJwt);
     expect(result.current.address).toBe(mockAddress);
+    expect(JSON.parse(localStorage.getItem("stellarsettle.auth-session")!)).toEqual({
+      jwt: mockJwt,
+      address: mockAddress,
+    });
     expect(result.current.isConnecting).toBe(false);
     expect(toast.error).not.toHaveBeenCalled();
+  });
+
+  it("restores an unexpired wallet session after a page reload", async () => {
+    localStorage.setItem(
+      "stellarsettle.auth-session",
+      JSON.stringify({ jwt: mockJwt, address: mockAddress }),
+    );
+
+    const { result } = renderHook(() => useAuth(), {
+      wrapper: ({ children }) => <AuthProvider>{children}</AuthProvider>,
+    });
+
+    await waitFor(() => expect(result.current.isInitializing).toBe(false));
+    expect(result.current.jwt).toBe(mockJwt);
+    expect(result.current.address).toBe(mockAddress);
   });
 
   it("2. Invalid signature returns an error toast and does not store a token", async () => {

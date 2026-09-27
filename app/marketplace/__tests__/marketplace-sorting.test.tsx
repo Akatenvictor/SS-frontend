@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import React from "react";
-import { CompareProvider } from "@/context/CompareContext";
+import { ComparisonProvider } from "@/components/marketplace/InvoiceComparisonContext";
 import MarketplacePage from "../page";
 
 vi.mock("@tanstack/react-query", async () => {
@@ -17,6 +17,13 @@ vi.mock("@/lib/logger", () => ({
   logError: vi.fn(),
 }));
 
+const mockReplace = vi.fn();
+vi.mock("next/navigation", () => ({
+  useSearchParams: () => new URLSearchParams(),
+  useRouter: () => ({ replace: mockReplace, push: vi.fn() }),
+  usePathname: () => "/marketplace",
+}));
+
 import { useInfiniteQuery } from "@tanstack/react-query";
 
 const mockUseInfiniteQuery = vi.mocked(useInfiniteQuery);
@@ -29,7 +36,7 @@ function createWrapper() {
     // Each row renders an "Add to compare" control backed by the compare context.
     return (
       <QueryClientProvider client={queryClient}>
-        <CompareProvider>{children}</CompareProvider>
+        <ComparisonProvider>{children}</ComparisonProvider>
       </QueryClientProvider>
     );
   };
@@ -145,4 +152,26 @@ describe("Marketplace Sorting", () => {
     const sortBtn = screen.getByTestId("sort-amount");
     expect(sortBtn.querySelector("svg")).toBeInTheDocument();
   });
+
+  it("renders funding progress details for each marketplace invoice", () => {
+    render(<MarketplacePage />, { wrapper: createWrapper() });
+
+    expect(screen.getAllByTestId("funding-progress-bar")).toHaveLength(3);
+    expect(screen.getAllByText("50.0%").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("5,000 XLM of 10,000 XLM").length).toBeGreaterThan(0);
+  });
+
+  it("polls the marketplace every 30 seconds for funding updates", () => {
+    setupMock();
+
+    render(<MarketplacePage />, { wrapper: createWrapper() });
+
+    expect(mockUseInfiniteQuery).toHaveBeenCalledWith(
+      expect.objectContaining({
+        refetchInterval: 30000,
+        refetchIntervalInBackground: true,
+      })
+    );
+  });
 });
+

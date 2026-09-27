@@ -48,14 +48,14 @@ describe("FundingProgressBar", () => {
         render(<FundingProgressBar raised={4500} target={10000} investorCount={3} />);
         advanceAnimation();
 
-        expect(screen.getByText(/4,500\.00 XLM raised of 10,000\.00 XLM/)).toBeInTheDocument();
+        expect(screen.getByText("4,500 XLM of 10,000 XLM")).toBeInTheDocument();
     });
 
     it("formats total to 2 decimal places", () => {
         render(<FundingProgressBar raised={4500} target={10000} investorCount={3} />);
         advanceAnimation();
 
-        const formattedText = screen.getByText(/4,500\.00 XLM raised of 10,000\.00 XLM/);
+        const formattedText = screen.getByText("4,500 XLM of 10,000 XLM");
         expect(formattedText).toBeInTheDocument();
     });
 
@@ -66,18 +66,18 @@ describe("FundingProgressBar", () => {
         expect(screen.getByText("0.0%")).toBeInTheDocument();
     });
 
-    it("renders Fully Funded badge at 100%", () => {
+    it("renders Funded badge at 100%", () => {
         render(<FundingProgressBar raised={10000} target={10000} investorCount={3} />);
         advanceAnimation();
 
-        expect(screen.getByText("Fully Funded")).toBeInTheDocument();
+        expect(screen.getByText("Funded")).toBeInTheDocument();
     });
 
-    it("does not render Fully Funded badge at 99.9%", () => {
+    it("does not render Funded badge at 99.9%", () => {
         render(<FundingProgressBar raised={9990} target={10000} investorCount={3} />);
         advanceAnimation();
 
-        expect(screen.queryByText("Fully Funded")).not.toBeInTheDocument();
+        expect(screen.queryByText("Funded")).not.toBeInTheDocument();
     });
 
     it("renders singular 'investor' for count of 1", () => {

@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { act, render, screen } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { InvoiceCard } from "../invoice-card";
-import { CompareProvider } from "@/context/CompareContext";
+import { ComparisonProvider } from "@/components/marketplace/InvoiceComparisonContext";
 import type { Invoice } from "@/lib/api";
 
 const TARGET = 10000;
@@ -26,7 +26,7 @@ function makeInvoice(overrides: Partial<Invoice> = {}): Invoice {
 
 /** The card renders an "Add to compare" control that reads the compare context. */
 function renderCard(ui: ReactElement) {
-    return render(<CompareProvider>{ui}</CompareProvider>);
+    return render(<ComparisonProvider>{ui}</ComparisonProvider>);
 }
 
 beforeEach(() => {
@@ -95,6 +95,7 @@ describe("InvoiceCard funding progress", () => {
         advanceAnimation();
 
         expect(screen.getByText("0.0%")).toBeInTheDocument();
-        expect(screen.getByText(/0\.00 XLM raised of 10,000\.00 XLM/)).toBeInTheDocument();
+        expect(screen.getByText("0 XLM of 10,000 XLM")).toBeInTheDocument();
     });
 });
+

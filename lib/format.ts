@@ -36,10 +36,10 @@ export function formatUsdc(amount: number | string | null | undefined): string {
   return `${formatted} USDC`;
 }
 
-/** Formats a basis-point rate (e.g. 825) as an annualised percentage (8.25%). */
-export function formatBpsAsPercent(bps: number): string {
-  if (isNaN(bps)) {
-    return "0.00%";
+/** Formats a percentage rate (e.g. 8.25) as "8.25%". */
+export function formatPercent(value: number | null | undefined): string {
+  if (value === null || value === undefined || isNaN(value)) {
+    return "N/A";
   }
-  return `${(bps / 100).toFixed(2)}%`;
+  return `${value.toFixed(2)}%`;
 }

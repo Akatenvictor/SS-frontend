@@ -1,11 +1,14 @@
 "use client";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { ThemeProvider } from "next-themes";
 import { useState } from "react";
 import { Toaster } from "@/components/ui/sonner";
+import { notifyApiError } from "@/lib/apiErrors";
 
 import { AuthProvider } from "@/context/AuthContext";
-import { CompareProvider } from "@/context/CompareContext";
+import { WalletProvider } from "@/context/WalletContext";
+import { PlatformOnboardingTour } from "@/components/onboarding/PlatformOnboardingTour";
 
 export function Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(
@@ -13,18 +16,28 @@ export function Providers({ children }: { children: React.ReactNode }) {
       new QueryClient({
         defaultOptions: {
           queries: { staleTime: 60 * 1000 },
+          // #281 — surface every failed mutation as a toast notification
+          mutations: { onError: notifyApiError },
         },
       })
   );
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <CompareProvider>
-          {children}
-          <Toaster position="top-right" />
-        </CompareProvider>
-      </AuthProvider>
-    </QueryClientProvider>
+    <ThemeProvider
+      attribute="class"
+      defaultTheme="system"
+      enableSystem
+    >
+      <QueryClientProvider client={queryClient}>
+        {/* #379 — one shared wallet session for the whole app */}
+        <WalletProvider>
+          <AuthProvider>
+            {children}
+            <PlatformOnboardingTour />
+            <Toaster position="top-right" />
+          </AuthProvider>
+        </WalletProvider>
+      </QueryClientProvider>
+    </ThemeProvider>
   );
 }

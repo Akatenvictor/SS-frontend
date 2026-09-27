@@ -53,4 +53,32 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
 );
 Button.displayName = "Button";
 
+export const FeatureComponent129: React.FC<{ label?: string; className?: string }> = ({
+  label = "New Feature 129",
+  className,
+}) => {
+  return (
+    <div
+      data-testid="feature-component-129"
+      className={cn("p-4 rounded-md border bg-card text-card-foreground shadow-sm", className)}
+    >
+      <span className="font-semibold text-sm">{label}</span>
+    </div>
+  );
+};
+
+export const FeatureComponent130: React.FC<{ label?: string; className?: string }> = ({
+  label = "New Feature 130",
+  className,
+}) => {
+  return (
+    <div
+      data-testid="feature-component-130"
+      className={cn("p-4 rounded-md border bg-card text-card-foreground shadow-sm", className)}
+    >
+      <span className="font-semibold text-sm">{label}</span>
+    </div>
+  );
+};
+
 export { Button, buttonVariants };

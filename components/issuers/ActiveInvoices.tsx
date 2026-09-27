@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { FundingProgressBar } from "@/components/invoices/FundingProgressBar";
 import { CountdownTimer } from "@/components/marketplace";
-import { formatBpsAsPercent, formatXLM } from "@/lib/format";
+import { formatPercent, formatXLM } from "@/lib/format";
 import {
   formatDate,
   fundingProgressPercent,
@@ -78,7 +78,7 @@ export function ActiveInvoices({ invoices, isLoading = false, now }: ActiveInvoi
                     {invoice.title}
                   </Link>
                   <p className="text-xs text-muted-foreground">
-                    {formatBpsAsPercent(invoice.yield_bps)} annualised · matures{" "}
+                    {formatPercent(invoice.yield_percentage)} annualised · matures{" "}
                     {formatDate(invoice.maturity_date)}
                   </p>
                 </div>

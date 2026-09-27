@@ -13,7 +13,7 @@ describe("InvestmentAmountInput", () => {
             target: { value: "50" },
         });
 
-        expect(screen.getByRole("alert")).toHaveTextContent("Amount below minimum investment");
+        expect(screen.getByRole("alert")).toHaveTextContent(`Minimum investment is ${min} XLM`);
     });
 
     it("shows an inline error when the amount exceeds available capacity", () => {

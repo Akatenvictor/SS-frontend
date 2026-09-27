@@ -13,6 +13,7 @@ export default defineConfig({
         // valid value and fails `tsc --noEmit`.
         jsx: { runtime: "automatic" },
     },
+
     resolve: {
         alias: {
             "@": path.resolve(__dirname, "."),

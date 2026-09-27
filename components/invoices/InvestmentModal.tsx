@@ -1,148 +1,128 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Loader2 } from "lucide-react";
-import {
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogFooter,
-    DialogHeader,
-    DialogTitle,
-} from "@/components/ui/dialog";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { InvestmentAmountInput } from "@/components/invoices/InvestmentAmountInput";
+import { FeeTierDisplay } from "@/components/invoices/FeeTierDisplay";
+import { PriceImpactWarning } from "@/components/invoices/PriceImpactWarning";
 import { TopUpCta } from "@/components/wallet/TopUpCta";
+import { useInvestMutation } from "@/hooks/useInvestments";
 import { useUsdcBalance } from "@/hooks/useUsdcBalance";
-import { investInInvoice } from "@/lib/api";
+import { useWallet } from "@/context/WalletContext";
 import { formatUsdc } from "@/lib/format";
-import type { Network } from "@/lib/stellar";
-
-/** Smallest investment the platform accepts, in USDC. */
-export const MIN_INVESTMENT = 10;
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 
 interface InvestmentModalProps {
-    invoiceId: string;
-    invoiceTitle: string;
-    /** Remaining amount that can still be funded. */
-    maxAmount: number;
-    address: string | null;
-    network: Network | null;
-    open: boolean;
-    onOpenChange: (open: boolean) => void;
-    /** Called after a successful investment so callers can refresh balances. */
-    onInvested?: () => void;
+  invoiceId: string;
+  minInvestment: number;
+  maxInvestment: number;
+  /** Total funding cap used for price-impact calculation (issue #344). */
+  fundingCap?: number;
+  onSuccess?: () => void;
 }
 
-type SubmitState = "idle" | "submitting" | "success" | "error";
-
-/**
- * Collects an investment amount and guards it against the wallet's USDC
- * balance, offering a top-up when the wallet is short.
- */
 export function InvestmentModal({
-    invoiceId,
-    invoiceTitle,
-    maxAmount,
-    address,
-    network,
-    open,
-    onOpenChange,
-    onInvested,
+  invoiceId,
+  minInvestment,
+  maxInvestment,
+  fundingCap,
+  onSuccess,
 }: InvestmentModalProps) {
-    const [amount, setAmount] = useState<number | null>(null);
-    const [state, setState] = useState<SubmitState>("idle");
-    const [errorMessage, setErrorMessage] = useState<string | null>(null);
-    const { balance } = useUsdcBalance(address, network);
+  const [isOpen, setIsOpen] = useState(false);
+  const [validAmount, setValidAmount] = useState<number | null>(null);
+  const investMutation = useInvestMutation();
+  const { address, network } = useWallet();
+  const { balance, refresh } = useUsdcBalance(address, network);
 
-    const isConnected = Boolean(address);
-    const insufficient =
-        balance !== null && amount !== null && amount > 0 && amount > balance;
+  // A null balance means the balance is still unknown, which is not the same as
+  // being underfunded, so it must not block the investment.
+  const insufficientBalance =
+    balance !== null && validAmount !== null && validAmount > balance;
 
-    const canSubmit = isConnected && amount !== null && amount > 0 && !insufficient;
+  const handleInvest = async () => {
+    if (validAmount === null || insufficientBalance) return;
 
-    async function handleSubmit() {
-        if (!canSubmit || amount === null) return;
-        setState("submitting");
-        setErrorMessage(null);
-        try {
-            await investInInvoice(invoiceId, amount);
-            setState("success");
-            onInvested?.();
-        } catch (error) {
-            setState("error");
-            setErrorMessage(
-                error instanceof Error ? error.message : "Investment failed. Please try again."
-            );
-        }
-    }
+    await investMutation.mutateAsync({ invoiceId, amount: validAmount });
+    setIsOpen(false);
+    setValidAmount(null);
+    // The chain has moved; re-read the balance instead of waiting for the
+    // 60s poll.
+    refresh();
+    onSuccess?.();
+  };
 
-    const dialogDescription = useMemo(
-        () => `Choose how much to invest in "${invoiceTitle}".`,
-        [invoiceTitle]
-    );
+  return (
+    <Popover open={isOpen} onOpenChange={setIsOpen}>
+      <PopoverTrigger asChild>
+        <Button data-testid="invest-button">Invest</Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-80">
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <h3 className="font-semibold">Invest in this Invoice</h3>
+            <p className="text-sm text-muted-foreground">
+              Enter the amount you&apos;d like to invest
+            </p>
+          </div>
 
-    return (
-        <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent data-testid="investment-modal">
-                <DialogHeader>
-                    <DialogTitle>Invest in this invoice</DialogTitle>
-                    <DialogDescription>{dialogDescription}</DialogDescription>
-                </DialogHeader>
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-muted-foreground">Wallet USDC balance</span>
+            <span
+              className="font-medium tabular-nums"
+              data-testid="investment-modal-balance"
+            >
+              {balance === null ? "Loading…" : formatUsdc(balance)}
+            </span>
+          </div>
 
-                {!isConnected ? (
-                    <p data-testid="investment-connect-required" className="text-sm text-muted-foreground">
-                        Connect your wallet to invest.
-                    </p>
-                ) : (
-                    <div className="space-y-3">
-                        <p className="text-sm text-muted-foreground">
-                            Wallet balance:{" "}
-                            <span data-testid="investment-modal-balance" className="font-medium text-foreground">
-                                {balance === null ? "Loading…" : formatUsdc(balance)}
-                            </span>
-                        </p>
+          <InvestmentAmountInput
+            min={minInvestment}
+            max={maxInvestment}
+            onValidAmountChange={setValidAmount}
+          />
 
-                        <InvestmentAmountInput
-                            min={MIN_INVESTMENT}
-                            max={maxAmount}
-                            onValidAmountChange={setAmount}
-                        />
+          {insufficientBalance && address && (
+            <TopUpCta
+              address={address}
+              balance={balance}
+              requiredAmount={validAmount as number}
+            />
+          )}
 
-                        {insufficient && (
-                            <TopUpCta
-                                address={address as string}
-                                balance={balance}
-                                requiredAmount={amount as number}
-                            />
-                        )}
-                    </div>
-                )}
+          <FeeTierDisplay amount={validAmount} />
 
-                {state === "error" && errorMessage && (
-                    <p role="alert" data-testid="investment-error" className="text-sm text-destructive">
-                        {errorMessage}
-                    </p>
-                )}
+          <PriceImpactWarning
+            amount={validAmount}
+            fundingCap={fundingCap ?? maxInvestment}
+          />
 
-                <DialogFooter>
-                    <Button
-                        variant="outline"
-                        onClick={() => onOpenChange(false)}
-                        data-testid="investment-cancel"
-                    >
-                        Cancel
-                    </Button>
-                    <Button
-                        onClick={handleSubmit}
-                        disabled={!canSubmit || state === "submitting"}
-                        data-testid="investment-submit"
-                    >
-                        {state === "submitting" && <Loader2 className="size-4 animate-spin" />}
-                        {state === "success" ? "Invested" : "Invest"}
-                    </Button>
-                </DialogFooter>
-            </DialogContent>
-        </Dialog>
-    );
+          <div className="flex gap-2 pt-2">
+            <Button
+              variant="outline"
+              onClick={() => setIsOpen(false)}
+              className="flex-1"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleInvest}
+              disabled={
+                validAmount === null ||
+                investMutation.isPending ||
+                insufficientBalance
+              }
+              data-testid="investment-submit"
+              className="flex-1"
+            >
+              {investMutation.isPending ? "Investing..." : "Invest"}
+            </Button>
+          </div>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
 }

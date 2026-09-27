@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
     validateInvestmentAmount,
+    belowMinimumError,
     INVALID_AMOUNT_ERROR,
-    BELOW_MINIMUM_ERROR,
     ABOVE_CAPACITY_ERROR,
 } from "../validation/investment-amount";
 
@@ -11,7 +11,11 @@ describe("validateInvestmentAmount", () => {
     const max = 5000;
 
     it("returns an error when the amount is below the minimum", () => {
-        expect(validateInvestmentAmount("50", min, max)).toBe(BELOW_MINIMUM_ERROR);
+        expect(validateInvestmentAmount("50", min, max)).toBe(belowMinimumError(min));
+    });
+
+    it("includes the actual minimum value in the error message (issue #116)", () => {
+        expect(validateInvestmentAmount("10", 250, max)).toBe("Minimum investment is 250 XLM");
     });
 
     it("returns an error when the amount exceeds the remaining capacity", () => {

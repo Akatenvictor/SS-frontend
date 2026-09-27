@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Providers } from "@/components/providers";
+import { AppErrorBoundary } from "@/components/ErrorBoundary";
 import { Navbar } from "@/components/layout";
+import { MobileNav } from "@/components/layout/MobileNav";
 import { Toaster } from "@/components/ui/sonner";
 import "./globals.css";
 
@@ -15,12 +17,18 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <body>
         <Providers>
           <Navbar />
-          {children}
+          <MobileNav />
+          {/* #281 — top-level boundary catching render errors below the layout */}
+          <AppErrorBoundary>
+            {children}
+          </AppErrorBoundary>
           <Toaster />
+          {/* Bottom padding for mobile tab bar */}
+          <div className="h-14 md:hidden" />
         </Providers>
       </body>
     </html>

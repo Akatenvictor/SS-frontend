@@ -1,11 +1,13 @@
 "use client";
 
-import { useCompareContext } from "@/context/CompareContext";
-import { CompareTable } from "@/components/compare";
+import Link from "next/link";
 import { usePageTitle } from "@/hooks/usePageTitle";
+import { MAX_COMPARE_INVOICES, useComparison } from "@/components/marketplace/InvoiceComparisonContext";
+import { InvoiceComparisonTable } from "@/components/marketplace/InvoiceComparisonTable";
+import { Button } from "@/components/ui/button";
 
 export default function ComparePage() {
-  const { items, clear, maxItems } = useCompareContext();
+  const { compareInvoices, clearComparison } = useComparison();
   usePageTitle("Compare invoices");
 
   return (
@@ -14,24 +16,39 @@ export default function ComparePage() {
         <div>
           <h1 className="text-2xl font-bold">Compare invoices</h1>
           <p className="text-sm text-muted-foreground">
-            {items.length > 0
-              ? `Comparing ${items.length} of ${maxItems} selected invoices.`
-              : "Select invoices from the marketplace to compare them."}
+            {compareInvoices.length > 0
+              ? `Comparing ${compareInvoices.length} of ${MAX_COMPARE_INVOICES} selected invoices.`
+              : `Select up to ${MAX_COMPARE_INVOICES} invoices from the marketplace to compare them.`}
           </p>
         </div>
-        {items.length > 0 && (
-          <button
-            type="button"
-            onClick={clear}
+        {compareInvoices.length > 0 && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={clearComparison}
             data-testid="compare-page-clear"
-            className="text-sm text-muted-foreground hover:text-foreground hover:underline"
           >
             Clear all
-          </button>
+          </Button>
         )}
       </div>
 
-      <CompareTable items={items} />
+      {compareInvoices.length === 0 ? (
+        <div
+          data-testid="compare-empty"
+          className="flex min-h-[40vh] flex-col items-center justify-center gap-3 text-center"
+        >
+          <h2 className="text-xl font-semibold">Nothing to compare yet</h2>
+          <p className="text-muted-foreground">
+            Pick invoices in the marketplace to see them side by side here.
+          </p>
+          <Button asChild>
+            <Link href="/marketplace">Browse the marketplace</Link>
+          </Button>
+        </div>
+      ) : (
+        <InvoiceComparisonTable invoices={compareInvoices} />
+      )}
     </main>
   );
 }

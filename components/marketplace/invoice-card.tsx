@@ -2,9 +2,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { FundingProgressBar } from "@/components/invoices/FundingProgressBar";
-import { AddToCompareButton } from "@/components/compare/AddToCompareButton";
 import { CountdownTimer, isExpired } from "./countdown-timer";
+import { CompareToggleButton } from "./CompareToggleButton";
+import { Lock } from "lucide-react";
 import type { Invoice } from "@/lib/api";
+import { useSuitabilityTier } from "@/hooks/useSuitabilityTier";
+import { REQUIRED_TIER, TIER_LABELS, canInvestInGrade } from "@/lib/suitability";
 
 const statusVariant: Record<string, "default" | "secondary" | "outline" | "destructive"> = {
   open: "default",
@@ -20,6 +23,9 @@ interface InvoiceCardProps {
 export function InvoiceCard({ invoice, onInvest }: InvoiceCardProps) {
   const published = invoice.status === "open";
   const expired = isExpired(invoice.due_date);
+  const { tier } = useSuitabilityTier();
+  const grade = invoice.risk_rating?.tier;
+  const locked = !canInvestInGrade(tier, grade);
 
   return (
     <Card className="flex flex-col">
@@ -48,16 +54,25 @@ export function InvoiceCard({ invoice, onInvest }: InvoiceCardProps) {
           investorCount={invoice.investor_count}
         />
 
-        <Button
-          className="mt-auto w-full"
-          disabled={!published || expired}
-          onClick={() => onInvest?.(invoice.id)}
-        >
-          {expired ? "Expired" : "Invest"}
-        </Button>
+        {grade && (
+          <p className="text-xs text-muted-foreground">Risk grade {grade}</p>
+        )}
+        {locked && grade && (
+          <p className="flex items-center gap-1 text-xs text-amber-700" data-testid="suitability-lock">
+            <Lock className="h-3 w-3" aria-hidden="true" />
+            Requires risk profile: {TIER_LABELS[REQUIRED_TIER[grade]]} or higher
+          </p>
+        )}
 
-        <div className="flex justify-end">
-          <AddToCompareButton invoice={invoice} showLabel={false} />
+        <div className="flex gap-2 mt-auto">
+          <Button
+            className="flex-1"
+            disabled={!published || expired || locked}
+            onClick={() => onInvest?.(invoice.id)}
+          >
+            {expired ? "Expired" : locked ? "Locked" : "Invest"}
+          </Button>
+          <CompareToggleButton invoice={invoice} />
         </div>
       </CardContent>
     </Card>

@@ -3,40 +3,56 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 
-export type KycStatus = "pending" | "rejected" | "approved" | "not_submitted";
+export type KycStatus =
+  | "pending"
+  | "rejected"
+  | "approved"
+  | "requires_resubmission"
+  | "not_submitted";
 
 interface KycStatusBannerProps {
   status: KycStatus;
+  reason?: string | null;
 }
 
 const KYC_START_ROUTE = "/kyc/start";
 const KYC_REAPPLY_ROUTE = "/kyc/reapply";
 
-export function KycStatusBanner({ status }: KycStatusBannerProps) {
-  if (status === "approved") {
+export function KycStatusBanner({ status, reason }: KycStatusBannerProps) {
+  if (status === "approved" || status === "pending") {
     return null;
   }
 
-  if (status === "pending") {
+  if (status === "requires_resubmission") {
     return (
       <div
-        role="status"
-        className="flex items-center rounded-md border bg-muted px-4 py-3 text-sm"
+        role="alert"
+        className="flex items-center justify-between gap-4 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+        data-testid="kyc-resubmission-banner"
       >
-        <p>Your KYC is under review</p>
+        <p>Additional documents required. Please update your KYC.</p>
+        <Button asChild variant="outline" size="sm">
+          <Link href={KYC_REAPPLY_ROUTE}>Go to KYC</Link>
+        </Button>
       </div>
     );
   }
 
   if (status === "rejected") {
+    const rejectionReason = reason?.trim();
+    const message = `Your KYC was rejected.${
+      rejectionReason ? ` Reason: ${rejectionReason}.` : ""
+    } Please resubmit.`;
+
     return (
       <div
         role="alert"
-        className="flex items-center justify-between rounded-md border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm"
+        className="flex items-center justify-between gap-4 rounded-md border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+        data-testid="kyc-rejected-banner"
       >
-        <p>Your KYC was rejected</p>
+        <p>{message}</p>
         <Button asChild variant="destructive" size="sm">
-          <Link href={KYC_REAPPLY_ROUTE}>Reapply</Link>
+          <Link href={KYC_REAPPLY_ROUTE}>Go to KYC</Link>
         </Button>
       </div>
     );

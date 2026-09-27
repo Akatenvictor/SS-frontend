@@ -32,8 +32,8 @@ export interface IssuerInvoice {
   issuer_id: string;
   /** Face value in XLM. */
   face_value: number;
-  /** Annualised yield in basis points (825 === 8.25%). */
-  yield_bps: number;
+  /** Annualised yield as a percentage (8.25 === 8.25%). */
+  yield_percentage: number;
   status: IssuerInvoiceStatus;
   maturity_date: string;
   raised: number;

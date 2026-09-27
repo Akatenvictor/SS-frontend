@@ -12,6 +12,28 @@ import {
 
 export const NOTIFICATION_PREFERENCES_QUERY_KEY = ["notification-preferences"] as const;
 
+/**
+ * Notification event types grouped by who they concern (issue #322).
+ *
+ * Sellers are notified about their own invoices' lifecycle; investors about
+ * the marketplace and the positions they hold. Every known event type must
+ * appear in exactly one of the two lists so the preferences page can render
+ * each group completely even when the API omits some entries.
+ */
+export const SELLER_NOTIFICATION_EVENTS: NotificationEventType[] = [
+  "invoice_funded",
+  "invoice_settled",
+  "invoice_rejected",
+  "deadline_extended",
+];
+
+export const INVESTOR_NOTIFICATION_EVENTS: NotificationEventType[] = [
+  "new_invoice",
+  "funding_milestone",
+  "settlement",
+  "invoice_matured",
+];
+
 export function useNotificationPreferences() {
   return useQuery({
     queryKey: NOTIFICATION_PREFERENCES_QUERY_KEY,

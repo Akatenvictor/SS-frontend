@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -11,7 +12,14 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { DocumentUpload } from "@/components/invoices/DocumentUpload";
+import { FaceValueInput } from "@/components/invoices/FaceValueInput";
 import { uploadDocumentToIpfs, publishInvoice } from "@/lib/api";
+import {
+  MIN_INVOICE_FACE_VALUE,
+  validateFaceValue,
+} from "@/lib/validation/face-value";
+import { validateDeadline } from "@/lib/validation/deadline";
+import { useAuth } from "@/hooks/useAuth";
 
 const detailsSchema = z.object({
   title: z.string().min(1, "Invoice title is required"),
@@ -20,7 +28,18 @@ const detailsSchema = z.object({
     .string()
     .min(1, "Face value is required")
     .refine((v) => Number(v) > 0, "Face value must be greater than 0"),
-  fundingDeadline: z.string().min(1, "Funding deadline is required"),
+  fundingDeadline: z
+    .string()
+    .min(1, "Funding deadline is required")
+    .superRefine((v, ctx) => {
+      const error = validateDeadline(v);
+      if (error) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: error,
+        });
+      }
+    }),
 });
 
 type DetailsFormData = z.infer<typeof detailsSchema>;
@@ -34,28 +53,56 @@ const STEP_LABELS: Record<Step, string> = {
 };
 
 export function PublishInvoiceForm() {
+  const router = useRouter();
+  const { jwt } = useAuth();
   const [step, setStep] = useState<Step>(1);
   const [documentFile, setDocumentFile] = useState<File | null>(null);
   const [documentCid, setDocumentCid] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
-  const [publishedInvoiceId, setPublishedInvoiceId] = useState<string | null>(null);
+  const [publishedInvoiceId, setPublishedInvoiceId] = useState<string | null>(
+    null,
+  );
 
   const {
     register,
     trigger,
     getValues,
+    setValue,
+    watch,
     formState: { errors },
   } = useForm<DetailsFormData>({
     resolver: zodResolver(detailsSchema),
-    defaultValues: { title: "", description: "", faceValue: "", fundingDeadline: "" },
+    defaultValues: {
+      title: "",
+      description: "",
+      faceValue: "",
+      fundingDeadline: "",
+    },
   });
+
+  const [isFaceValueValid, setIsFaceValueValid] = useState(false);
 
   const handleNextFromDetails = useCallback(async () => {
     const valid = await trigger();
     if (valid) setStep(2);
   }, [trigger]);
+
+  const handleFaceValueChange = useCallback(
+    (amount: number | null) => {
+      setIsFaceValueValid(amount !== null);
+      if (amount !== null) {
+        setValue("faceValue", String(amount), {
+          shouldValidate: true,
+          shouldDirty: true,
+        });
+      } else {
+        setValue("faceValue", "", { shouldValidate: true, shouldDirty: true });
+      }
+    },
+    [setValue]
+  );
 
   const handleUpload = useCallback((file: File) => {
     setDocumentFile(file);
@@ -73,7 +120,7 @@ export function PublishInvoiceForm() {
       });
     }, 200);
 
-    uploadDocumentToIpfs(file)
+    uploadDocumentToIpfs(file, jwt ?? undefined)
       .then((result) => {
         clearInterval(interval);
         setUploadProgress(100);
@@ -87,7 +134,7 @@ export function PublishInvoiceForm() {
       .finally(() => {
         setIsUploading(false);
       });
-  }, []);
+  }, [jwt]);
 
   const handlePublish = useCallback(async () => {
     if (!documentCid) return;
@@ -101,14 +148,14 @@ export function PublishInvoiceForm() {
         faceValue: Number(values.faceValue),
         fundingDeadline: values.fundingDeadline,
         documentCid,
-      });
-      setPublishedInvoiceId(result.id);
+      }, jwt ?? undefined);
+      router.push(`/dashboard/seller/publish/success?invoiceId=${result.id}`);
     } catch {
       toast.error("Failed to publish invoice. Please try again.");
     } finally {
       setIsPublishing(false);
     }
-  }, [documentCid, getValues]);
+  }, [documentCid, getValues, jwt, router]);
 
   if (publishedInvoiceId) {
     return (
@@ -119,7 +166,8 @@ export function PublishInvoiceForm() {
             Your invoice has been submitted for funding.
           </p>
           <p className="font-mono text-sm">
-            Invoice ID: <span className="font-semibold">{publishedInvoiceId}</span>
+            Invoice ID:{" "}
+            <span className="font-semibold">{publishedInvoiceId}</span>
           </p>
         </CardContent>
       </Card>
@@ -133,7 +181,10 @@ export function PublishInvoiceForm() {
       <CardHeader>
         <div className="flex items-center gap-1 text-sm text-muted-foreground">
           {([1, 2, 3] as Step[]).map((s) => (
-            <span key={s} className={s === step ? "font-semibold text-foreground" : ""}>
+            <span
+              key={s}
+              className={s === step ? "font-semibold text-foreground" : ""}
+            >
               {s > 1 && <span className="mx-2">›</span>}
               {s}. {STEP_LABELS[s]}
             </span>
@@ -147,7 +198,9 @@ export function PublishInvoiceForm() {
               <Label htmlFor="invoice-title">Invoice Title</Label>
               <Input id="invoice-title" {...register("title")} />
               {errors.title && (
-                <p className="text-sm text-destructive">{errors.title.message}</p>
+                <p className="text-sm text-destructive">
+                  {errors.title.message}
+                </p>
               )}
             </div>
 
@@ -155,27 +208,41 @@ export function PublishInvoiceForm() {
               <Label htmlFor="invoice-description">Description</Label>
               <Input id="invoice-description" {...register("description")} />
               {errors.description && (
-                <p className="text-sm text-destructive">{errors.description.message}</p>
+                <p className="text-sm text-destructive">
+                  {errors.description.message}
+                </p>
               )}
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="invoice-face-value">Face Value (XLM)</Label>
-              <Input id="invoice-face-value" inputMode="decimal" {...register("faceValue")} />
+              <FaceValueInput
+                defaultValue={watch("faceValue")}
+                onValidAmountChange={handleFaceValueChange}
+              />
               {errors.faceValue && (
-                <p className="text-sm text-destructive">{errors.faceValue.message}</p>
+                <p className="text-sm text-destructive">
+                  {errors.faceValue.message}
+                </p>
               )}
             </div>
 
             <div className="space-y-2">
               <Label htmlFor="invoice-deadline">Funding Deadline</Label>
-              <Input id="invoice-deadline" type="date" {...register("fundingDeadline")} />
+              <Input
+                id="invoice-deadline"
+                type="date"
+                {...register("fundingDeadline")}
+              />
               {errors.fundingDeadline && (
-                <p className="text-sm text-destructive">{errors.fundingDeadline.message}</p>
+                <p className="text-sm text-destructive">
+                  {errors.fundingDeadline.message}
+                </p>
               )}
             </div>
 
-            <Button onClick={handleNextFromDetails}>Next</Button>
+            <Button onClick={handleNextFromDetails} disabled={!isFaceValueValid}>
+              Next
+            </Button>
           </div>
         )}
 
@@ -192,7 +259,9 @@ export function PublishInvoiceForm() {
                   />
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  {documentCid ? "Upload complete" : `Uploading... ${uploadProgress}%`}
+                  {documentCid
+                    ? "Upload complete"
+                    : `Uploading... ${uploadProgress}%`}
                 </p>
               </div>
             )}

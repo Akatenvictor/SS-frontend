@@ -19,7 +19,7 @@ function makeInvoice(overrides: Partial<IssuerInvoice> = {}): IssuerInvoice {
         title: "Acme Corp Q3 receivable",
         issuer_id: "issuer-1",
         face_value: 10_000,
-        yield_bps: 825,
+        yield_percentage: 8.25,
         status: "settled",
         maturity_date: "2026-01-31T00:00:00.000Z",
         raised: 10_000,

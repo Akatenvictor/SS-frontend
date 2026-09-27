@@ -1,10 +1,19 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactElement } from "react";
 import { InvestorPortfolio } from "../InvestorPortfolio";
 import type { InvestmentPosition } from "@/lib/portfolio";
 import * as api from "@/lib/api";
+
+// PositionCard renders PositionTransferModal for every "active" position
+// (issue #119), which needs AuthContext this file doesn't set up — it isn't
+// testing transfer behaviour, so it's stubbed the same way
+// PositionCard.test.tsx does. See PositionTransferModal's own test file for
+// its behaviour (issue #115).
+vi.mock("@/components/dashboard/PositionTransferModal", () => ({
+    PositionTransferModal: () => null,
+}));
 
 const EMPTY_MESSAGE =
     "No active investments yet — browse the marketplace to get started";
@@ -84,6 +93,28 @@ describe("InvestorPortfolio empty state", () => {
         expect(
             screen.queryByTestId("investor-portfolio-empty")
         ).not.toBeInTheDocument();
+    });
+
+    it("separates active and settled/expired positions into position history", async () => {
+        vi.spyOn(api, "fetchPortfolio").mockResolvedValue({
+            positions: [
+                ...positions,
+                {
+                    invoice_id: "inv-2",
+                    invoice_title: "Settled receivable",
+                    committed_amount: 1000,
+                    status: "settled",
+                },
+            ],
+        });
+
+        renderWithClient(<InvestorPortfolio />);
+        expect(await screen.findByText("Acme Corp Q3 receivable")).toBeInTheDocument();
+        expect(screen.queryByText("Settled receivable")).not.toBeInTheDocument();
+
+        fireEvent.click(screen.getByTestId("tab-position-history"));
+        expect(await screen.findByText("Settled receivable")).toBeInTheDocument();
+        expect(screen.queryByText("Acme Corp Q3 receivable")).not.toBeInTheDocument();
     });
 
     it("replaces the empty state with position rows as soon as data arrives", async () => {

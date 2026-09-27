@@ -5,17 +5,15 @@ import { useRouter } from "next/navigation";
 import { Wallet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import { useStellarWallet } from "@/hooks/useStellarWallet";
+import { useAuth } from "@/context/AuthContext";
 
 export default function ConnectWalletPage() {
   const router = useRouter();
-  const { isConnected, isConnecting, connect } = useStellarWallet();
+  const { jwt, isConnecting, isInitializing, loginWithWallet } = useAuth();
 
   useEffect(() => {
-    if (isConnected) {
-      router.replace("/marketplace");
-    }
-  }, [isConnected, router]);
+    if (jwt) router.replace("/marketplace");
+  }, [jwt, router]);
 
   return (
     <main className="container mx-auto flex min-h-[60vh] max-w-md items-center justify-center px-4 py-8">
@@ -27,9 +25,9 @@ export default function ConnectWalletPage() {
           </p>
         </CardHeader>
         <CardContent className="flex justify-center">
-          <Button onClick={connect} disabled={isConnecting}>
+          <Button onClick={() => void loginWithWallet()} disabled={isConnecting || Boolean(isInitializing) || Boolean(jwt)}>
             <Wallet className="mr-2 h-4 w-4" />
-            {isConnecting ? "Connecting..." : "Connect Wallet"}
+            {isInitializing ? "Restoring session..." : jwt ? "Wallet connected" : isConnecting ? "Verify wallet..." : "Connect Wallet"}
           </Button>
         </CardContent>
       </Card>

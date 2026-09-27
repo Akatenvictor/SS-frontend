@@ -2,7 +2,7 @@
 
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { formatBpsAsPercent, formatXLM } from "@/lib/format";
+import { formatPercent, formatXLM } from "@/lib/format";
 import { InvoiceStatusBadge } from "@/components/invoices/InvoiceStatusBadge";
 import { formatDate, type IssuerInvoice } from "@/lib/issuers";
 
@@ -82,7 +82,7 @@ export function InvoiceHistoryTable({ invoices, isLoading = false }: InvoiceHist
                       {formatXLM(invoice.face_value)}
                     </td>
                     <td className="py-3 pr-4 text-right tabular-nums">
-                      {formatBpsAsPercent(invoice.yield_bps)}
+                      {formatPercent(invoice.yield_percentage)}
                     </td>
                     <td className="py-3 pr-4">
                       <InvoiceStatusBadge status={invoice.status} />
