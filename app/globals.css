@@ -101,3 +101,50 @@ body {
     }
   }
 }
+
+/* #386 — dark-mode contrast for status tints. ~20 badges/banners use light
+   tints (bg-red-50, bg-green-100, border-amber-200 …) with dark text
+   (text-red-700 … -900) and no dark: variants, so in dark mode they rendered
+   as bright pastel blocks. Tailwind v4 utilities resolve to these CSS
+   variables, so remapping them under .dark fixes every component at once:
+   tints become translucent washes of the hue, text shades become light ones.
+   Shades 300-500 are left untouched so the mappings never reference an
+   overridden value. */
+.dark {
+  --color-red-50: color-mix(in oklab, var(--color-red-500) 10%, transparent);
+  --color-red-100: color-mix(in oklab, var(--color-red-500) 18%, transparent);
+  --color-red-200: color-mix(in oklab, var(--color-red-500) 30%, transparent);
+  --color-red-700: var(--color-red-400);
+  --color-red-800: var(--color-red-300);
+  --color-red-900: var(--color-red-300);
+  --color-green-50: color-mix(in oklab, var(--color-green-500) 10%, transparent);
+  --color-green-100: color-mix(in oklab, var(--color-green-500) 18%, transparent);
+  --color-green-200: color-mix(in oklab, var(--color-green-500) 30%, transparent);
+  --color-green-700: var(--color-green-400);
+  --color-green-800: var(--color-green-300);
+  --color-green-900: var(--color-green-300);
+  --color-amber-50: color-mix(in oklab, var(--color-amber-500) 10%, transparent);
+  --color-amber-100: color-mix(in oklab, var(--color-amber-500) 18%, transparent);
+  --color-amber-200: color-mix(in oklab, var(--color-amber-500) 30%, transparent);
+  --color-amber-700: var(--color-amber-400);
+  --color-amber-800: var(--color-amber-300);
+  --color-amber-900: var(--color-amber-300);
+  --color-yellow-50: color-mix(in oklab, var(--color-yellow-500) 10%, transparent);
+  --color-yellow-100: color-mix(in oklab, var(--color-yellow-500) 18%, transparent);
+  --color-yellow-200: color-mix(in oklab, var(--color-yellow-500) 30%, transparent);
+  --color-yellow-700: var(--color-yellow-400);
+  --color-yellow-800: var(--color-yellow-300);
+  --color-yellow-900: var(--color-yellow-300);
+  --color-blue-50: color-mix(in oklab, var(--color-blue-500) 10%, transparent);
+  --color-blue-100: color-mix(in oklab, var(--color-blue-500) 18%, transparent);
+  --color-blue-200: color-mix(in oklab, var(--color-blue-500) 30%, transparent);
+  --color-blue-700: var(--color-blue-400);
+  --color-blue-800: var(--color-blue-300);
+  --color-blue-900: var(--color-blue-300);
+  --color-emerald-50: color-mix(in oklab, var(--color-emerald-500) 10%, transparent);
+  --color-emerald-100: color-mix(in oklab, var(--color-emerald-500) 18%, transparent);
+  --color-emerald-200: color-mix(in oklab, var(--color-emerald-500) 30%, transparent);
+  --color-emerald-700: var(--color-emerald-400);
+  --color-emerald-800: var(--color-emerald-300);
+  --color-emerald-900: var(--color-emerald-300);
+}
