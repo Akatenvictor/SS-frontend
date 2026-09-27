@@ -43,6 +43,8 @@ export default function ProfilePage() {
             </Button>
           </div>
         )}
+      </section>
+
       <section aria-labelledby="settings-heading" className="mt-8">
         <h2 id="settings-heading" className="mb-4 text-lg font-semibold">
           Settings
