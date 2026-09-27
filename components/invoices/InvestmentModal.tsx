@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { InvestmentAmountInput } from "@/components/invoices/InvestmentAmountInput";
 import { FeeTierDisplay } from "@/components/invoices/FeeTierDisplay";
+import { PriceImpactWarning } from "@/components/invoices/PriceImpactWarning";
 import { useInvestMutation } from "@/hooks/useInvestments";
 import {
   Popover,
@@ -15,6 +16,8 @@ interface InvestmentModalProps {
   invoiceId: string;
   minInvestment: number;
   maxInvestment: number;
+  /** Total funding cap used for price-impact calculation (issue #344). */
+  fundingCap?: number;
   onSuccess?: () => void;
 }
 
@@ -22,6 +25,7 @@ export function InvestmentModal({
   invoiceId,
   minInvestment,
   maxInvestment,
+  fundingCap,
   onSuccess,
 }: InvestmentModalProps) {
   const [isOpen, setIsOpen] = useState(false);
@@ -58,6 +62,11 @@ export function InvestmentModal({
           />
 
           <FeeTierDisplay amount={validAmount} />
+
+          <PriceImpactWarning
+            amount={validAmount}
+            fundingCap={fundingCap ?? maxInvestment}
+          />
 
           <div className="flex gap-2 pt-2">
             <Button

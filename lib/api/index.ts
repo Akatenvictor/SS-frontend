@@ -2376,3 +2376,176 @@ export function isAccreditedForInvoice(
   if (faceValue < threshold) return true;
   return tier === "accredited" || tier === "qualified";
 }
+
+// ─── Invoice holder dividend claim page (issue #350) ─────────────────────
+
+export interface DividendCycle {
+  cycle: string;
+  cycle_id?: string;
+  amount: number;
+  distribution_date: string;
+  claimable: boolean;
+  claimed?: boolean;
+  transaction_hash?: string | null;
+}
+
+export interface DividendClaimRecord {
+  cycle: string;
+  amount: number;
+  claimed_at: string;
+  transaction_hash: string;
+}
+
+export interface InvestorDividendsResponse {
+  total_earned: number;
+  total_pending: number;
+  claimable: DividendCycle[];
+  history: DividendClaimRecord[];
+}
+
+function normalizeDividendCycle(raw: any): DividendCycle {
+  const cycle = String(raw.cycle ?? raw.cycle_id ?? raw.cycleId ?? raw.id ?? "");
+  const amount = Number(raw.amount ?? raw.claimable_amount ?? 0);
+  const distribution_date = String(
+    raw.distribution_date ?? raw.distributionDate ?? raw.date ?? raw.created_at ?? ""
+  );
+  const claimed = Boolean(raw.claimed ?? false);
+  return {
+    cycle,
+    cycle_id: raw.cycle_id ?? raw.cycleId ?? cycle,
+    amount,
+    distribution_date,
+    claimable: typeof raw.claimable === "boolean" ? raw.claimable : !claimed,
+    claimed,
+    transaction_hash: raw.transaction_hash ?? raw.transactionHash ?? null,
+  };
+}
+
+function normalizeDividendClaimRecord(raw: any): DividendClaimRecord {
+  return {
+    cycle: String(raw.cycle ?? raw.cycle_id ?? ""),
+    amount: Number(raw.amount ?? 0),
+    claimed_at: String(raw.claimed_at ?? raw.claimedAt ?? raw.date ?? ""),
+    transaction_hash: String(raw.transaction_hash ?? raw.transactionHash ?? raw.tx_hash ?? ""),
+  };
+}
+
+function normalizeInvestorDividends(raw: any): InvestorDividendsResponse {
+  const claimableRaw: any[] = Array.isArray(raw.claimable)
+    ? raw.claimable
+    : Array.isArray(raw.claimsByCycle)
+      ? raw.claimsByCycle
+      : Array.isArray(raw.cycles)
+        ? raw.cycles
+        : [];
+  const historyRaw: any[] = Array.isArray(raw.history)
+    ? raw.history
+    : Array.isArray(raw.claimed)
+      ? raw.claimed
+      : [];
+  const claimable = claimableRaw.map(normalizeDividendCycle);
+  const history = historyRaw.map(normalizeDividendClaimRecord);
+  const total_pending = Number(
+    raw.total_pending ?? raw.totalPending ?? raw.pendingClaims ?? 0
+  );
+  const total_earned = Number(
+    raw.total_earned ?? raw.totalEarned ?? raw.totalEarnedXlm ?? 0
+  );
+  // Aggregate fallback when backend only sends cycles.
+  const pendingFallback = claimable
+    .filter((c) => c.claimable && !c.claimed)
+    .reduce((sum, c) => sum + c.amount, 0);
+  const earnedFallback =
+    pendingFallback + history.reduce((sum, h) => sum + h.amount, 0);
+  return {
+    total_earned: total_earned || earnedFallback,
+    total_pending: raw.total_pending !== undefined ? total_pending : pendingFallback,
+    claimable,
+    history,
+  };
+}
+
+export async function fetchInvestorDividends(): Promise<InvestorDividendsResponse> {
+  const res = await fetch(`${API_BASE}/investor/dividends`);
+  if (!res.ok) throw new Error("Failed to fetch dividends");
+  return normalizeInvestorDividends(await res.json());
+}
+
+export async function claimDividendCycle(
+  cycleId: string
+): Promise<{ success: boolean; transaction_hash?: string }> {
+  const res = await fetch(
+    `${API_BASE}/investor/dividends/${encodeURIComponent(cycleId)}/claim`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    }
+  );
+  if (!res.ok) throw new Error("Failed to claim dividend");
+  return res.json();
+}
+
+export async function claimAllDividends(): Promise<InvestorDividendsResponse> {
+  const res = await fetch(`${API_BASE}/investor/claim-dividends`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+  });
+  if (!res.ok) throw new Error("Failed to claim dividends");
+  const payload = await res.json();
+  // Backend may return the refreshed summary or just success.
+  if (payload && (payload.claimable || payload.claimsByCycle || payload.total_earned !== undefined)) {
+    return normalizeInvestorDividends(payload);
+  }
+  return fetchInvestorDividends();
+}
+
+// ─── Invoice rating widget (issue #348) ──────────────────────────────────
+
+export interface InvoiceRatingSummary {
+  invoice_id: string;
+  average_rating: number;
+  rating_count: number;
+  user_rating?: number | null;
+}
+
+function normalizeInvoiceRating(raw: any, invoiceId: string): InvoiceRatingSummary {
+  return {
+    invoice_id: raw.invoice_id ?? raw.invoiceId ?? invoiceId,
+    average_rating: Number(raw.average_rating ?? raw.averageRating ?? raw.average ?? 0),
+    rating_count: Number(raw.rating_count ?? raw.ratingCount ?? raw.count ?? 0),
+    user_rating:
+      raw.user_rating !== undefined && raw.user_rating !== null
+        ? Number(raw.user_rating)
+        : (raw.userRating !== undefined && raw.userRating !== null
+          ? Number(raw.userRating)
+          : null),
+  };
+}
+
+export async function fetchInvoiceRating(
+  invoiceId: string
+): Promise<InvoiceRatingSummary> {
+  const res = await fetch(
+    `${API_BASE}/invoices/${encodeURIComponent(invoiceId)}/rating`
+  );
+  if (!res.ok) throw new Error("Failed to fetch invoice rating");
+  return normalizeInvoiceRating(await res.json(), invoiceId);
+}
+
+export async function submitInvoiceRating(
+  invoiceId: string,
+  rating: number,
+  walletAddress?: string,
+  token?: string
+): Promise<InvoiceRatingSummary> {
+  const res = await fetch(
+    `${API_BASE}/invoices/${encodeURIComponent(invoiceId)}/rating`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...authHeaders(token) },
+      body: JSON.stringify({ rating, wallet: walletAddress }),
+    }
+  );
+  if (!res.ok) throw new Error("Failed to submit rating");
+  return normalizeInvoiceRating(await res.json(), invoiceId);
+}

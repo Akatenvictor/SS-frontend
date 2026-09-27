@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/popover";
 import { InvestmentAmountInput } from "@/components/invoices/InvestmentAmountInput";
 import { FeeTierDisplay } from "@/components/invoices/FeeTierDisplay";
+import { PriceImpactWarning } from "@/components/invoices/PriceImpactWarning";
 import { useInvestMutation } from "@/hooks/useInvestments";
 import { Loader2 } from "lucide-react";
 
@@ -23,12 +24,14 @@ interface InvestDialogProps {
   invoiceId: string;
   invoiceTitle: string;
   remainingAmount: number;
+  fundingCap?: number;
 }
 
 export function InvestDialog({
   invoiceId,
   invoiceTitle,
   remainingAmount,
+  fundingCap,
 }: InvestDialogProps) {
   const [open, setOpen] = useState(false);
   const [amount, setAmount] = useState<number | null>(null);
@@ -79,6 +82,11 @@ export function InvestDialog({
             />
 
             <FeeTierDisplay amount={amount} />
+
+            <PriceImpactWarning
+              amount={amount}
+              fundingCap={fundingCap ?? remainingAmount}
+            />
 
             <div className="flex gap-3">
               <Button
