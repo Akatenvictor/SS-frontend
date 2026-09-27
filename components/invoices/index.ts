@@ -26,3 +26,5 @@ export { InvoiceProtectionInfo } from "./InvoiceProtectionInfo";
 export { FeeTierDisplay } from "./FeeTierDisplay";
 export { InvoiceSubmissionForm } from "./InvoiceSubmissionForm";
 export { FractionInvestmentModal } from "./FractionInvestmentModal";
+export { PriceImpactWarning } from "./PriceImpactWarning";
+export { InvoiceRatingWidget } from "./InvoiceRatingWidget";

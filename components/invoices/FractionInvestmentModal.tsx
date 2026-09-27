@@ -20,6 +20,7 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { useInvestMutation } from "@/hooks/useInvestments";
 import { useStellarWallet } from "@/hooks/useStellarWallet";
+import { PriceImpactWarning } from "@/components/invoices/PriceImpactWarning";
 import { Loader2, ExternalLink } from "lucide-react";
 
 interface FractionInvestmentModalProps {
@@ -35,6 +36,8 @@ interface FractionInvestmentModalProps {
   availableFractions: number;
   /** Wallet balance in XLM */
   walletBalance?: number;
+  /** Total funding cap for price-impact calculation (issue #344) */
+  fundingCap?: number;
   /** Called when investment succeeds */
   onSuccess?: (txHash: string) => void;
 }
@@ -99,6 +102,7 @@ export function FractionInvestmentModal({
   minFractions,
   availableFractions,
   walletBalance,
+  fundingCap,
   onSuccess,
 }: FractionInvestmentModalProps) {
   const [open, setOpen] = useState(false);
@@ -305,6 +309,11 @@ export function FractionInvestmentModal({
                     {totalCost.toLocaleString()} XLM
                   </span>
                 </div>
+
+                <PriceImpactWarning
+                  amount={totalCost > 0 ? totalCost : null}
+                  fundingCap={fundingCap ?? availableFractions * fractionPrice}
+                />
 
                 {/* ── Insufficient balance banner ── */}
                 {hasInsufficientBalance && (

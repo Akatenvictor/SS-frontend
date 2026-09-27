@@ -1,8 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, Play } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { requestOnboardingTourReplay } from "@/hooks/useOnboardingTour";
 import {
   filterHelpArticles,
   getMostViewedArticles,
@@ -83,6 +85,18 @@ export function HelpCentre() {
             Contact support
           </a>
         </p>
+        <div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => requestOnboardingTourReplay()}
+            data-testid="replay-tour-button"
+          >
+            <Play className="mr-2 h-4 w-4" aria-hidden="true" />
+            Replay onboarding tour
+          </Button>
+        </div>
       </header>
 
       {!isSearching && (

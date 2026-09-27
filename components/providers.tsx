@@ -8,6 +8,7 @@ import { notifyApiError } from "@/lib/apiErrors";
 
 import { AuthProvider } from "@/context/AuthContext";
 import { WalletProvider } from "@/context/WalletContext";
+import { PlatformOnboardingTour } from "@/components/onboarding/PlatformOnboardingTour";
 
 export function Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(
@@ -33,6 +34,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
         <WalletProvider>
           <AuthProvider>
             {children}
+            <PlatformOnboardingTour />
             <Toaster position="top-right" />
           </AuthProvider>
         </WalletProvider>

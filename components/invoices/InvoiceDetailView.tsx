@@ -22,6 +22,7 @@ import { InvoiceFinancials } from "@/components/invoices/InvoiceFinancials";
 import { InvoiceMetaTags } from "@/components/invoices/InvoiceMetaTags";
 import { InvoiceStatusBadge } from "@/components/invoices/InvoiceStatusBadge";
 import { InvestmentModal } from "@/components/invoices/InvestmentModal";
+import { InvoiceRatingWidget } from "@/components/invoices/InvoiceRatingWidget";
 import { ReturnsBreakdown } from "@/components/invoices/ReturnsBreakdown";
 import { ShareInvoiceButton } from "@/components/invoices/ShareInvoiceButton";
 import { WatchlistButton } from "@/components/invoices/WatchlistButton";
@@ -95,10 +96,12 @@ function InvestCallToAction({
   invoiceId,
   minInvestment,
   maxInvestment,
+  fundingCap,
 }: {
   invoiceId: string;
   minInvestment: number;
   maxInvestment: number;
+  fundingCap: number;
 }) {
   const { isConnected } = useWallet();
   const { isApproved, isLoading, status } = useIsKycApproved({
@@ -156,6 +159,7 @@ function InvestCallToAction({
           invoiceId={invoiceId}
           minInvestment={minInvestment}
           maxInvestment={maxInvestment}
+          fundingCap={fundingCap}
         />
       </CardContent>
     </Card>
@@ -171,6 +175,7 @@ export function InvoiceDetailView({ invoiceId }: InvoiceDetailViewProps) {
     invoiceId,
   });
   const { data: protocolStatus } = useProtocolStatus();
+  const { address } = useWallet();
 
   // The floor is a protocol-wide setting (issue #116); fall back rather than
   // block investing while it loads.
@@ -185,6 +190,10 @@ export function InvoiceDetailView({ invoiceId }: InvoiceDetailViewProps) {
   const expired = isExpired(invoice.due_date);
   const remaining = Math.max(0, invoice.amount - invoice.raised);
   const isOpenForInvestment = invoice.status === "open" && !expired && remaining > 0;
+  // Qualifying investor: connected wallet appears in the investor list (#348).
+  const isQualifyingInvestor = Boolean(
+    address && invoice.investors.some((inv) => inv.address === address)
+  );
 
   return (
     <div className="space-y-6">
@@ -259,6 +268,7 @@ export function InvoiceDetailView({ invoiceId }: InvoiceDetailViewProps) {
           invoiceId={invoice.id}
           minInvestment={minInvestment}
           maxInvestment={remaining}
+          fundingCap={invoice.amount}
         />
       ) : (
         <Card data-testid="invest-cta">
@@ -281,6 +291,12 @@ export function InvoiceDetailView({ invoiceId }: InvoiceDetailViewProps) {
       <InvoiceDocumentsTab
         documentUrl={invoice.document_url ?? null}
         additionalDocuments={invoice.documents ?? []}
+      />
+
+      <InvoiceRatingWidget
+        invoiceId={invoice.id}
+        isEligible={isQualifyingInvestor}
+        walletAddress={address}
       />
 
       {invoice.investors.length > 0 && (
