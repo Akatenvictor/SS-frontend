@@ -4,6 +4,8 @@ import { useState } from "react";
 import { UserProfile } from "@/components/dashboard/UserProfile";
 import { RiskProfileQuestionnaire } from "@/components/onboarding/RiskProfileQuestionnaire";
 import { Button } from "@/components/ui/button";
+import { ThemeSelector } from "@/components/layout/ThemeSelector";
+import { Card, CardContent } from "@/components/ui/card";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { useSuitabilityTier } from "@/hooks/useSuitabilityTier";
 import { TIER_LABELS } from "@/lib/suitability";
@@ -41,6 +43,15 @@ export default function ProfilePage() {
             </Button>
           </div>
         )}
+      <section aria-labelledby="settings-heading" className="mt-8">
+        <h2 id="settings-heading" className="mb-4 text-lg font-semibold">
+          Settings
+        </h2>
+        <Card>
+          <CardContent className="pt-6">
+            <ThemeSelector />
+          </CardContent>
+        </Card>
       </section>
     </main>
   );

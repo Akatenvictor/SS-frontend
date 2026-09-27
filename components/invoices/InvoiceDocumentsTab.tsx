@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { DocumentVerificationBadge } from "@/components/invoices/DocumentVerificationBadge";
 import {
   documentFileName,
   guessDocumentKind,
@@ -203,6 +204,9 @@ function IpfsDocumentPanel({ documentUrl }: { documentUrl: string }) {
           Stored on IPFS
         </p>
       )}
+
+      {/* Integrity check runs in the background and never blocks the viewer (#412). */}
+      <DocumentVerificationBadge documentUrl={documentUrl} />
 
       <DocumentViewer
         url={url}
