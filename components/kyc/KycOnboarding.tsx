@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { ChevronLeft, ChevronRight, Check, AlertCircle, FileText, Upload, X } from "lucide-react";
+import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -68,7 +69,7 @@ function FileUpload({
           )}
         >
           {isImage && preview ? (
-            <img src={preview} alt="Preview" className="max-h-32 max-w-full rounded" />
+            <Image src={preview} alt="Preview" width={200} height={200} className="max-h-32 max-w-full rounded" />
           ) : value ? (
             <div className="flex items-center gap-2 text-green-600">
               <FileText className="h-5 w-5" />
