@@ -2,6 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { FundingProgressBar } from "@/components/invoices/FundingProgressBar";
+import { AddToCompareButton } from "@/components/compare/AddToCompareButton";
 import { CountdownTimer, isExpired } from "./countdown-timer";
 import type { Invoice } from "@/lib/api";
 
@@ -54,6 +55,10 @@ export function InvoiceCard({ invoice, onInvest }: InvoiceCardProps) {
         >
           {expired ? "Expired" : "Invest"}
         </Button>
+
+        <div className="flex justify-end">
+          <AddToCompareButton invoice={invoice} showLabel={false} />
+        </div>
       </CardContent>
     </Card>
   );

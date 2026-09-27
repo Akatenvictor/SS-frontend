@@ -16,3 +16,30 @@ export function formatXLM(amount: number | string | bigint): string {
 
   return `${formatted} XLM`;
 }
+
+/**
+ * Formats a USDC amount with thousand separators and 2 decimal places.
+ * USDC mirrors Stellar's 7-decimal precision, so trailing zeros are trimmed
+ * below two decimals to keep the nav chip compact ("1,250 USDC", "12.5 USDC").
+ */
+export function formatUsdc(amount: number | string | null | undefined): string {
+  const num = typeof amount === "string" ? Number(amount) : Number(amount ?? 0);
+  if (isNaN(num)) {
+    return "0.00 USDC";
+  }
+
+  const formatted = num.toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+
+  return `${formatted} USDC`;
+}
+
+/** Formats a basis-point rate (e.g. 825) as an annualised percentage (8.25%). */
+export function formatBpsAsPercent(bps: number): string {
+  if (isNaN(bps)) {
+    return "0.00%";
+  }
+  return `${(bps / 100).toFixed(2)}%`;
+}

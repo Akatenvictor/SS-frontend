@@ -8,3 +8,4 @@ export { DocumentUpload } from "./DocumentUpload";
 export { SettlementReturnCard } from "./SettlementReturnCard";
 export { PublishInvoiceForm } from "./PublishInvoiceForm";
 export { ShareInvoiceButton } from "./ShareInvoiceButton";
+export { InvestmentModal } from "./InvestmentModal";

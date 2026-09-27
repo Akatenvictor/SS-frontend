@@ -1,15 +1,19 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { fetchInvoiceDetail, type InvoiceDetail } from "@/lib/api";
 import { usePageTitle } from "@/hooks/usePageTitle";
+import { useStellarWallet } from "@/hooks/useStellarWallet";
+import { useUsdcBalance } from "@/hooks/useUsdcBalance";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { InvoiceStatusBadge } from "@/components/invoices/InvoiceStatusBadge";
 import { FundingProgressBar } from "@/components/invoices/FundingProgressBar";
 import { DocumentPreview } from "@/components/invoices/DocumentPreview";
+import { InvestmentModal } from "@/components/invoices/InvestmentModal";
 import { CountdownTimer, isExpired } from "@/components/marketplace";
 import { ShareInvoiceButton } from "@/components/invoices/ShareInvoiceButton";
 import { recordView } from "@/lib/recentlyViewed";
@@ -98,6 +102,10 @@ export function InvoiceDetail({ invoiceId }: InvoiceDetailProps) {
     queryFn: () => fetchInvoiceDetail(invoiceId),
   });
 
+  const { address, network } = useStellarWallet();
+  const { refresh: refreshBalance } = useUsdcBalance(address, network);
+  const [investOpen, setInvestOpen] = useState(false);
+
   usePageTitle(invoice?.title ?? null);
 
   useEffect(() => {
@@ -129,7 +137,16 @@ export function InvoiceDetail({ invoiceId }: InvoiceDetailProps) {
               <ShareInvoiceButton />
             </div>
           </div>
-          <p className="text-sm text-muted-foreground">Seller: {invoice.seller}</p>
+          <p className="text-sm text-muted-foreground">
+            Seller:{" "}
+            <Link
+              href={`/issuers/${encodeURIComponent(invoice.seller)}`}
+              data-testid="issuer-profile-link"
+              className="font-medium text-foreground hover:underline"
+            >
+              {invoice.seller}
+            </Link>
+          </p>
           <CountdownTimer deadline={invoice.due_date} published={published} />
         </CardHeader>
       </Card>
@@ -145,7 +162,12 @@ export function InvoiceDetail({ invoiceId }: InvoiceDetailProps) {
 
       <div data-testid="invest-section">
         {invoice.status === "open" && !expired && (
-          <Button data-testid="invest-button">Invest</Button>
+          <Button
+            data-testid="invest-button"
+            onClick={() => setInvestOpen(true)}
+          >
+            Invest
+          </Button>
         )}
         {invoice.status === "open" && expired && (
           <p data-testid="invest-expired-message">This invoice has expired</p>
@@ -158,6 +180,17 @@ export function InvoiceDetail({ invoiceId }: InvoiceDetailProps) {
         )}
         {invoice.status === "draft" && null}
       </div>
+
+      <InvestmentModal
+        invoiceId={invoice.id}
+        invoiceTitle={invoice.title}
+        maxAmount={Math.max(invoice.amount - invoice.raised, 0)}
+        address={address}
+        network={network}
+        open={investOpen}
+        onOpenChange={setInvestOpen}
+        onInvested={refreshBalance}
+      />
 
       <Card>
         <CardHeader>

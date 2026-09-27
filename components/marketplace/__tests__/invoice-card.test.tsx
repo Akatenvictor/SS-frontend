@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { act, render, screen } from "@testing-library/react";
+import type { ReactElement } from "react";
 import { InvoiceCard } from "../invoice-card";
+import { CompareProvider } from "@/context/CompareContext";
 import type { Invoice } from "@/lib/api";
 
 const TARGET = 10000;
@@ -22,6 +24,11 @@ function makeInvoice(overrides: Partial<Invoice> = {}): Invoice {
     };
 }
 
+/** The card renders an "Add to compare" control that reads the compare context. */
+function renderCard(ui: ReactElement) {
+    return render(<CompareProvider>{ui}</CompareProvider>);
+}
+
 beforeEach(() => {
     vi.useFakeTimers();
 });
@@ -39,7 +46,7 @@ function advanceAnimation() {
 
 describe("InvoiceCard funding progress", () => {
     it("renders a 50% bar for 5000 raised of a 10000 target", () => {
-        render(<InvoiceCard invoice={makeInvoice({ raised: 5000 })} />);
+        renderCard(<InvoiceCard invoice={makeInvoice({ raised: 5000 })} />);
         advanceAnimation();
 
         expect(screen.getByText("50.0%")).toBeInTheDocument();
@@ -50,7 +57,7 @@ describe("InvoiceCard funding progress", () => {
     });
 
     it("renders a green 100% bar for a fully funded invoice", () => {
-        render(
+        renderCard(
             <InvoiceCard invoice={makeInvoice({ raised: TARGET, status: "funded" })} />
         );
         advanceAnimation();
@@ -60,7 +67,7 @@ describe("InvoiceCard funding progress", () => {
     });
 
     it("renders a 0% bar when nothing has been raised", () => {
-        render(<InvoiceCard invoice={makeInvoice({ raised: 0 })} />);
+        renderCard(<InvoiceCard invoice={makeInvoice({ raised: 0 })} />);
         advanceAnimation();
 
         expect(screen.getByText("0.0%")).toBeInTheDocument();
@@ -71,7 +78,7 @@ describe("InvoiceCard funding progress", () => {
     });
 
     it("caps the bar at 100% when raised exceeds the target, without overflowing", () => {
-        render(<InvoiceCard invoice={makeInvoice({ raised: 15000 })} />);
+        renderCard(<InvoiceCard invoice={makeInvoice({ raised: 15000 })} />);
         advanceAnimation();
 
         expect(screen.getByText("100.0%")).toBeInTheDocument();
@@ -84,7 +91,7 @@ describe("InvoiceCard funding progress", () => {
     it("renders a 0% bar for a null raised value without crashing", () => {
         const invoice = makeInvoice({ raised: null as unknown as number });
 
-        expect(() => render(<InvoiceCard invoice={invoice} />)).not.toThrow();
+        expect(() => renderCard(<InvoiceCard invoice={invoice} />)).not.toThrow();
         advanceAnimation();
 
         expect(screen.getByText("0.0%")).toBeInTheDocument();

@@ -8,6 +8,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { MarketplaceFilterBar } from "@/components/marketplace";
+import { AddToCompareButton } from "@/components/compare/AddToCompareButton";
+import { CompareBar } from "@/components/compare/CompareBar";
 import { Loader2, ArrowUp, ArrowDown } from "lucide-react";
 
 type SortField = "amount" | "due_date" | null;
@@ -72,6 +74,9 @@ function InvoiceRow({ invoice }: { invoice: Invoice }) {
             </span>
             Due Date
           </div>
+        </div>
+        <div className="mt-3 flex justify-end">
+          <AddToCompareButton invoice={invoice} />
         </div>
       </CardContent>
     </Card>
@@ -289,6 +294,8 @@ export default function MarketplacePage() {
           </p>
         )}
       </div>
+
+      <CompareBar />
     </main>
   );
 }

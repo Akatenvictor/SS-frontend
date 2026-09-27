@@ -10,6 +10,10 @@ export interface Invoice {
   rejection_reason?: string;
   has_more: boolean;
   next_cursor: string | null;
+  /** Annualised yield in basis points, published once the invoice is priced. */
+  yield_bps?: number;
+  /** Issuer reputation 0-100; absent when the issuer has no settlement history. */
+  issuer_score?: number;
 }
 
 export interface InvoiceDetail extends Invoice {
@@ -25,8 +29,23 @@ export interface InvoicesResponse {
 }
 
 import type { InvestmentPosition } from "@/lib/portfolio";
+import type { IssuerProfile } from "@/lib/issuers";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "/api";
+
+/**
+ * Raised by API helpers when the server reports the resource is absent, so
+ * callers can render a 404 state instead of a generic failure.
+ */
+export class ApiNotFoundError extends Error {
+  readonly status: number;
+
+  constructor(message = "Not found") {
+    super(message);
+    this.name = "ApiNotFoundError";
+    this.status = 404;
+  }
+}
 
 export async function fetchInvoices(cursor?: string): Promise<InvoicesResponse> {
   const params = new URLSearchParams();
@@ -38,7 +57,16 @@ export async function fetchInvoices(cursor?: string): Promise<InvoicesResponse> 
 
 export async function fetchInvoiceDetail(id: string): Promise<InvoiceDetail> {
   const res = await fetch(`${API_BASE}/invoices/${id}`);
+  if (res.status === 404) throw new ApiNotFoundError("Invoice not found");
   if (!res.ok) throw new Error("Failed to fetch invoice detail");
+  return res.json();
+}
+
+/** Fetches a public issuer profile, including its full invoice history. */
+export async function fetchIssuerProfile(id: string): Promise<IssuerProfile> {
+  const res = await fetch(`${API_BASE}/issuers/${encodeURIComponent(id)}`);
+  if (res.status === 404) throw new ApiNotFoundError("Issuer not found");
+  if (!res.ok) throw new Error("Failed to fetch issuer profile");
   return res.json();
 }
 
@@ -67,6 +95,45 @@ export interface NotificationPreference {
 export async function fetchNotificationPreferences(): Promise<NotificationPreference[]> {
   const res = await fetch(`${API_BASE}/notifications/preferences`);
   if (!res.ok) throw new Error("Failed to fetch notification preferences");
+  return res.json();
+}
+
+/**
+ * Email-only notification settings for the user settings page.
+ *
+ * Deliberately a separate union from {@link NotificationEventType}: that type
+ * backs the per-channel dashboard toggles, and widening it would force every
+ * existing consumer to handle channel combinations the settings page has no
+ * concept of.
+ */
+export type EmailNotificationType =
+  | "settlement"
+  | "kyc_status"
+  | "watchlist_invoice_match"
+  | "secondary_market_sale"
+  | "invoice_decision";
+
+export interface EmailNotificationPreference {
+  event_type: EmailNotificationType;
+  email: boolean;
+}
+
+export async function fetchEmailNotificationPreferences(): Promise<EmailNotificationPreference[]> {
+  const res = await fetch(`${API_BASE}/notifications/preferences/email`);
+  if (!res.ok) throw new Error("Failed to fetch notification preferences");
+  return res.json();
+}
+
+/** Persists every email toggle in one request; the UI saves as a batch. */
+export async function saveEmailNotificationPreferences(
+  preferences: EmailNotificationPreference[]
+): Promise<{ success: boolean }> {
+  const res = await fetch(`${API_BASE}/notifications/preferences/email`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ preferences }),
+  });
+  if (!res.ok) throw new Error("Failed to save notification preferences");
   return res.json();
 }
 
