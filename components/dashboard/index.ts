@@ -14,5 +14,5 @@ export { HoldingActionsMenu } from "./HoldingActionsMenu";
 export { KeyTransferModal } from "./KeyTransferModal";
 export { WalletActivityFeed } from "./WalletActivityFeed";
 export { UserProfile } from "./UserProfile";
-export { DividendClaimPage } from "./DividendClaimPage";
-export { DividendEarningsCard } from "./DividendEarningsCard";
+export { SellerInvoiceTabs } from "./SellerInvoiceTabs";
+export { DeleteDraftDialog } from "./DeleteDraftDialog";

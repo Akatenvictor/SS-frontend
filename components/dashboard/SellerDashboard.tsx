@@ -1,13 +1,10 @@
 "use client";
 
-import Link from "next/link";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ProfileStatsSkeleton } from "@/components/ui/skeletons";
-import { InvoiceStatusBadge } from "@/components/invoices/InvoiceStatusBadge";
-import { FundingProgressBar } from "@/components/invoices/FundingProgressBar";
 import { KycStatusBanner } from "@/components/dashboard/KycStatusBanner";
+import { SellerInvoiceTabs } from "@/components/dashboard/SellerInvoiceTabs";
 import { OnboardingChecklist } from "@/components/dashboard/OnboardingChecklist";
 import {
   useSellerDashboard,
@@ -95,60 +92,7 @@ export function SellerDashboard() {
 
       <div className="space-y-4">
         <h2 className="text-lg font-semibold">Invoice Breakdown</h2>
-        {data.invoices.length === 0 ? (
-          <div
-            className="flex flex-col items-center gap-4 py-12 text-center"
-            data-testid="seller-invoices-empty"
-          >
-            <p className="text-muted-foreground">
-              No invoices yet — create your first invoice to get started
-            </p>
-            <Button asChild>
-              <Link href="/seller/publish">Create Invoice</Link>
-            </Button>
-          </div>
-        ) : (
-          data.invoices.map((invoice) => (
-            <Card key={invoice.id}>
-              <CardHeader className="pb-2">
-                <div className="flex items-center justify-between">
-                  <h3 className="font-semibold">{invoice.title}</h3>
-                  <InvoiceStatusBadge status={invoice.status} />
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  Face value: {formatXlm(invoice.amount)}
-                </p>
-              </CardHeader>
-              <CardContent>
-                {invoice.status === "rejected" && invoice.rejection_reason && (
-                  <div
-                    className="mb-4 rounded-md border border-red-200 bg-red-50 p-4"
-                    data-testid="rejected-banner"
-                  >
-                    <p className="text-sm text-red-800">
-                      This invoice was not approved: {invoice.rejection_reason}
-                    </p>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="mt-2"
-                      asChild
-                    >
-                      <Link href={`/seller/publish?edit=${invoice.id}`}>
-                        Edit and Resubmit
-                      </Link>
-                    </Button>
-                  </div>
-                )}
-                <FundingProgressBar
-                  raised={invoice.raised}
-                  target={invoice.amount}
-                  investorCount={invoice.investor_count}
-                />
-              </CardContent>
-            </Card>
-          ))
-        )}
+        <SellerInvoiceTabs invoices={data.invoices} />
       </div>
     </div>
   );

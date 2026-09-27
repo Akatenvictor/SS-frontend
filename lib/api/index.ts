@@ -5,7 +5,7 @@ export interface Invoice {
   amount: number;
   raised: number;
   investor_count: number;
-  status: "open" | "funded" | "settled" | "rejected" | "draft";
+  status: "draft" | "pending" | "open" | "funded" | "settled" | "rejected";
   due_date: string;
   yield_percentage?: number;
   rejection_reason?: string;
@@ -208,6 +208,37 @@ export async function publishInvoice(
     body: JSON.stringify(input),
   });
   if (!res.ok) throw new Error("Failed to publish invoice");
+  return res.json();
+}
+
+/**
+ * Submit a draft invoice for admin review, moving it from `draft` to `pending`.
+ */
+export async function submitDraftInvoice(
+  id: string,
+  token?: string
+): Promise<{ success: boolean }> {
+  const res = await fetch(`${API_BASE}/invoices/${id}/submit`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders(token) },
+  });
+  if (!res.ok) throw new Error("Failed to submit invoice for review");
+  return res.json();
+}
+
+/**
+ * Permanently delete a draft invoice. Only drafts are deletable — once an
+ * invoice is under review or live it has to be resolved, not removed.
+ */
+export async function deleteDraftInvoice(
+  id: string,
+  token?: string
+): Promise<{ success: boolean }> {
+  const res = await fetch(`${API_BASE}/invoices/${id}`, {
+    method: "DELETE",
+    headers: authHeaders(token),
+  });
+  if (!res.ok) throw new Error("Failed to delete draft invoice");
   return res.json();
 }
 
