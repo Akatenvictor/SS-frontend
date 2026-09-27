@@ -1,1 +1,1 @@
-export {};
+export { InvestorDashboard } from "./InvestorDashboard";

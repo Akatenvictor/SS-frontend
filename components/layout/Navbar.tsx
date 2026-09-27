@@ -1,14 +1,18 @@
 "use client";
 
 import Link from "next/link";
-import { Wallet } from "lucide-react";
+import { Wallet, Bookmark, Activity } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { useStellarWallet } from "@/hooks/useStellarWallet";
 import { WalletChip } from "@/components/wallet/WalletChip";
+import { useWatchlist } from "@/hooks/useWatchlist";
+import { cn } from "@/lib/utils";
 
 export function Navbar() {
   const { address, network, isConnected, isConnecting, connect, disconnect, refreshNetwork } =
     useStellarWallet();
+  const { count, isLoading } = useWatchlist();
 
   return (
     <header className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -21,6 +25,35 @@ export function Navbar() {
           <Link href="/marketplace" className="text-sm text-muted-foreground hover:text-foreground">
             Marketplace
           </Link>
+          {isConnected && (
+            <>
+              <Link
+                href="/activity"
+                className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+              >
+                <Activity className="h-4 w-4" />
+                Activity
+              </Link>
+              <Link
+                href="/watchlist"
+                className="relative flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+              >
+                <Bookmark className="h-4 w-4" />
+                Watchlist
+                {(count > 0 || isLoading) && (
+                  <Badge
+                    variant="default"
+                    className={cn(
+                      "ml-1 h-5 min-w-5 text-xs",
+                      isLoading ? "bg-muted animate-pulse" : "bg-primary"
+                    )}
+                  >
+                    {isLoading ? "..." : count}
+                  </Badge>
+                )}
+              </Link>
+            </>
+          )}
           {isConnected ? (
             <WalletChip
               address={address!}

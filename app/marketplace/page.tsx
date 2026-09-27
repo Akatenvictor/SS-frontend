@@ -6,6 +6,7 @@ import { fetchInvoices, type Invoice } from "@/lib/api";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { WatchlistButton } from "@/components/marketplace/WatchlistButton";
 
 function InvoiceRow({ invoice }: { invoice: Invoice }) {
   return (
@@ -13,9 +14,12 @@ function InvoiceRow({ invoice }: { invoice: Invoice }) {
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
           <h3 className="font-semibold">{invoice.title}</h3>
-          <Badge variant={invoice.status === "open" ? "default" : "secondary"}>
-            {invoice.status}
-          </Badge>
+          <div className="flex items-center gap-2">
+            <Badge variant={invoice.status === "open" ? "default" : "secondary"}>
+              {invoice.status}
+            </Badge>
+            <WatchlistButton invoiceId={invoice.id} />
+          </div>
         </div>
       </CardHeader>
       <CardContent>
