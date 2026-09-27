@@ -7,6 +7,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { notifyApiError } from "@/lib/apiErrors";
 
 import { AuthProvider } from "@/context/AuthContext";
+import { WalletProvider } from "@/context/WalletContext";
 
 export function Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(
@@ -28,10 +29,13 @@ export function Providers({ children }: { children: React.ReactNode }) {
       disableTransitionOnChange
     >
       <QueryClientProvider client={queryClient}>
-        <AuthProvider>
-          {children}
-          <Toaster position="top-right" />
-        </AuthProvider>
+        {/* #379 — one shared wallet session for the whole app */}
+        <WalletProvider>
+          <AuthProvider>
+            {children}
+            <Toaster position="top-right" />
+          </AuthProvider>
+        </WalletProvider>
       </QueryClientProvider>
     </ThemeProvider>
   );

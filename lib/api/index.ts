@@ -17,6 +17,8 @@ export interface InvoiceDetail extends Invoice {
   description: string;
   investors: { address: string; amount: number; timestamp: string }[];
   document_url: string;
+  /** Any supporting documents beyond the primary one. */
+  documents?: string[];
   early_repayment?: {
     amount: number;
     original_maturity_date: string;
@@ -336,14 +338,62 @@ export interface NotificationItem {
   body?: string;
   /** Where clicking the notification should navigate, e.g. /marketplace/123. */
   link?: string;
+  /**
+   * Event kind driving the icon, copy and default route in the notification
+   * centre (issue #377): settlement, kyc, listing, invoice or general.
+   */
+  type?: string;
+  /** Related invoice, when the notification is about one. */
+  invoice_id?: string;
   read: boolean;
   created_at?: string;
+}
+
+/**
+ * Backends have shipped the event kind under several names (`type`,
+ * `event_type`, `eventType`) and the read flag under both `read` and
+ * `is_read`, so responses are normalised once here instead of at every
+ * call site.
+ */
+export function normalizeNotification(raw: any): NotificationItem {
+  return {
+    ...raw,
+    id: raw.id,
+    title: raw.title ?? undefined,
+    message: raw.message ?? undefined,
+    body: raw.body ?? raw.description ?? undefined,
+    link: raw.link ?? raw.url ?? undefined,
+    type: raw.type ?? raw.event_type ?? raw.eventType ?? undefined,
+    invoice_id: raw.invoice_id ?? raw.invoiceId ?? undefined,
+    read: Boolean(raw.read ?? raw.is_read ?? false),
+    created_at: raw.created_at ?? raw.createdAt ?? undefined,
+  };
+}
+
+/** Newest first — the order the notification centre renders in. */
+export function sortNotificationsByRecency(
+  notifications: NotificationItem[]
+): NotificationItem[] {
+  return [...notifications].sort((a, b) => {
+    const aTime = a.created_at ? new Date(a.created_at).getTime() : 0;
+    const bTime = b.created_at ? new Date(b.created_at).getTime() : 0;
+    // Items with no timestamp sort last rather than jumping to the top.
+    if (a.created_at && !b.created_at) return -1;
+    if (!a.created_at && b.created_at) return 1;
+    return bTime - aTime;
+  });
 }
 
 export async function fetchNotifications(): Promise<NotificationItem[]> {
   const res = await fetch(`${API_BASE}/notifications`);
   if (!res.ok) throw new Error("Failed to fetch notifications");
-  return res.json();
+  const payload = await res.json();
+  const list: any[] = Array.isArray(payload)
+    ? payload
+    : Array.isArray(payload?.notifications)
+      ? payload.notifications
+      : [];
+  return sortNotificationsByRecency(list.map(normalizeNotification));
 }
 
 export async function fetchUnreadCount(): Promise<{ count: number }> {
@@ -1878,4 +1928,164 @@ export async function fetchFeeTier(): Promise<FeeTierInfo> {
   const res = await fetch(`${API_BASE}/protocol/fee-tier`);
   if (!res.ok) throw new Error("Failed to fetch fee tier");
   return normalizeFeeTierInfo(await res.json());
+}
+
+/* ─── Secondary market — resale listings (issue #380) ────────────────────── */
+
+export type ResaleListingStatus = "active" | "sold" | "cancelled";
+
+/** Invoice categories a listing can be filtered by. */
+export const RESALE_INVOICE_TYPES = [
+  "trade_receivable",
+  "supply_chain",
+  "promissory_note",
+  "equipment_lease",
+  "service_contract",
+] as const;
+
+export type ResaleInvoiceType = (typeof RESALE_INVOICE_TYPES)[number];
+
+export interface ResaleListing {
+  id: string;
+  invoice_id: string;
+  invoice_title: string;
+  /** Invoice category, used by the "invoice type" filter. */
+  invoice_type: string;
+  /** Wallet that listed the fractions. */
+  seller: string;
+  /** Fractions the seller originally listed. */
+  quantity: number;
+  /** Fractions still on offer — drops to 0 once sold out. */
+  remaining_quantity: number;
+  /** Ask price per fraction, in the asset's smallest unit. */
+  ask_price: number;
+  /** Value one fraction pays out at maturity; the basis for implied yield. */
+  maturity_value: number;
+  /** Maturity date of the underlying invoice (ISO 8601). */
+  maturity_date: string;
+  listed_at: string;
+  status: ResaleListingStatus;
+}
+
+export interface ResaleListingsResponse {
+  listings: ResaleListing[];
+  has_more: boolean;
+  next_cursor: string | null;
+}
+
+/** Query parameters accepted by the listings endpoint. */
+export interface ResaleListingFilters {
+  invoiceType?: string;
+  minYield?: number;
+  maxYield?: number;
+  minPrice?: number;
+  maxPrice?: number;
+  /** Only listings maturing within this many days. */
+  maxDaysToMaturity?: number;
+}
+
+function normalizeResaleListing(raw: any): ResaleListing {
+  const quantity = Number(raw.quantity ?? raw.shares ?? raw.shares_offered ?? 0);
+  const remaining = Number(
+    raw.remaining_quantity ?? raw.remaining ?? raw.shares_remaining ?? quantity
+  );
+
+  return {
+    id: String(raw.id ?? raw.listing_id),
+    invoice_id: String(raw.invoice_id ?? raw.invoiceId ?? ""),
+    invoice_title: String(raw.invoice_title ?? raw.invoiceTitle ?? raw.title ?? ""),
+    invoice_type: String(raw.invoice_type ?? raw.invoiceType ?? "other"),
+    seller: String(raw.seller ?? raw.seller_address ?? ""),
+    quantity,
+    remaining_quantity: remaining,
+    ask_price: Number(raw.ask_price ?? raw.askPrice ?? raw.price ?? 0),
+    maturity_value: Number(
+      raw.maturity_value ?? raw.maturityValue ?? raw.face_value ?? 0
+    ),
+    maturity_date: String(raw.maturity_date ?? raw.maturityDate ?? raw.due_date ?? ""),
+    listed_at: String(raw.listed_at ?? raw.listedAt ?? raw.created_at ?? ""),
+    status: (raw.status ?? "active") as ResaleListingStatus,
+  };
+}
+
+function buildResaleListingParams(filters: ResaleListingFilters = {}): URLSearchParams {
+  const params = new URLSearchParams();
+  if (filters.invoiceType && filters.invoiceType !== "all") {
+    params.set("invoice_type", filters.invoiceType);
+  }
+  if (filters.minYield !== undefined && filters.minYield > 0) {
+    params.set("min_yield", String(filters.minYield));
+  }
+  if (filters.maxYield !== undefined && filters.maxYield > 0) {
+    params.set("max_yield", String(filters.maxYield));
+  }
+  if (filters.minPrice !== undefined && filters.minPrice > 0) {
+    params.set("min_price", String(filters.minPrice));
+  }
+  if (filters.maxPrice !== undefined && filters.maxPrice > 0) {
+    params.set("max_price", String(filters.maxPrice));
+  }
+  if (filters.maxDaysToMaturity !== undefined && filters.maxDaysToMaturity > 0) {
+    params.set("max_days_to_maturity", String(filters.maxDaysToMaturity));
+  }
+  return params;
+}
+
+export async function fetchResaleListings(
+  filters: ResaleListingFilters = {},
+  signal?: AbortSignal
+): Promise<ResaleListingsResponse> {
+  const params = buildResaleListingParams(filters);
+  const query = params.toString();
+  const res = await fetch(
+    `${API_BASE}/marketplace/listings${query ? `?${query}` : ""}`,
+    { signal }
+  );
+  if (!res.ok) throw new Error("Failed to fetch resale listings");
+
+  const payload = await res.json();
+  const rawList: any[] = Array.isArray(payload)
+    ? payload
+    : Array.isArray(payload?.listings)
+      ? payload.listings
+      : [];
+
+  return {
+    listings: rawList.map(normalizeResaleListing),
+    has_more: Boolean(payload?.has_more ?? false),
+    next_cursor: payload?.next_cursor ?? null,
+  };
+}
+
+export interface BuyFractionInput {
+  listingId: string;
+  /** Number of fractions to purchase. */
+  quantity: number;
+}
+
+export interface BuyFractionResult {
+  success: boolean;
+  transaction_hash?: string;
+  /** Remaining quantity reported by the contract after the transfer. */
+  remaining_quantity?: number;
+}
+
+/**
+ * Submits the Soroban `transfer_fraction` contract call that moves the
+ * requested fractions from the seller to the buyer.
+ */
+export async function buyFraction(
+  input: BuyFractionInput,
+  token?: string
+): Promise<BuyFractionResult> {
+  const res = await fetch(`${API_BASE}/marketplace/listings/${input.listingId}/buy`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders(token) },
+    body: JSON.stringify({ quantity: input.quantity }),
+  });
+  if (!res.ok) {
+    const message = await readConflictErrorMessage(res, "Failed to buy fraction");
+    throw new Error(message);
+  }
+  return res.json();
 }
