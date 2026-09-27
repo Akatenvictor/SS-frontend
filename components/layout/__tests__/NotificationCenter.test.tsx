@@ -51,14 +51,21 @@ describe("NotificationCenter (issue #283)", () => {
 
     const bell = screen.getByTestId("notification-bell");
     expect(bell).toBeInTheDocument();
-    expect(screen.getByTestId("notification-badge")).toHaveTextContent("2");
+
+    // The unread count comes from an async query, so the badge appears a tick later.
+    await waitFor(() => {
+      expect(screen.getByTestId("notification-badge")).toHaveTextContent("2");
+    });
 
     fireEvent.click(bell);
 
     await waitFor(() => {
       expect(screen.getByTestId("notification-panel")).toBeInTheDocument();
     });
-    expect(screen.getByTestId("notification-list")).toBeInTheDocument();
+    // Skeletons render first, so wait for the list to replace them.
+    await waitFor(() => {
+      expect(screen.getByTestId("notification-list")).toBeInTheDocument();
+    });
     expect(screen.getByText("Invoice fully funded")).toBeInTheDocument();
   });
 
@@ -81,9 +88,15 @@ describe("NotificationCenter (issue #283)", () => {
     render(<NotificationCenter />, { wrapper: createWrapper() });
 
     fireEvent.click(screen.getByTestId("notification-bell"));
-    await waitFor(() => screen.getByTestId("mark-all-read-btn"));
+    // The button stays disabled until the unread count resolves, otherwise the
+    // click is swallowed and the mutation never runs.
+    const markAll = await waitFor(() => {
+      const button = screen.getByTestId("mark-all-read-btn");
+      expect(button).toBeEnabled();
+      return button as HTMLButtonElement;
+    });
 
-    fireEvent.click(screen.getByTestId("mark-all-read-btn"));
+    fireEvent.click(markAll);
 
     await waitFor(() => {
       expect(api.markAllNotificationsAsRead).toHaveBeenCalled();

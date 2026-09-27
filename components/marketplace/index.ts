@@ -6,3 +6,8 @@ export type { MarketplaceFilterState, FundingStatus } from "./FilterPanel";
 export { ComparisonProvider, useComparison } from "./InvoiceComparisonContext";
 export { InvoiceComparisonBar } from "./InvoiceComparisonBar";
 export { InvoiceComparisonModal } from "./InvoiceComparisonModal";
+export { AtomicSwapForm } from "./AtomicSwapForm";
+export type { SwapProposal } from "./AtomicSwapForm";
+export { SecondaryListingCard, SecondaryListingSkeleton } from "./SecondaryListingCard";
+export { SecondaryMarketFiltersPanel } from "./SecondaryMarketFilters";
+export { BuyFractionModal } from "./BuyFractionModal";

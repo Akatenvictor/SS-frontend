@@ -3,12 +3,8 @@
 import { useParams } from "next/navigation";
 import { InvoiceDetailView } from "@/components/invoices/InvoiceDetailView";
 
-/**
- * Marketplace deep link to an invoice. Renders the same view as the canonical
- * `/invoices/[id]` route so links from the grid, notifications and
- * notifications' "listing sold" events all land on one implementation.
- */
-export default function MarketplaceInvoiceDetailPage() {
+/** Canonical invoice detail route (issue #376). */
+export default function InvoiceDetailPage() {
   const params = useParams<{ id: string }>();
 
   return (
