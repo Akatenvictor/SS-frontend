@@ -3,7 +3,7 @@
 import { useCallback, useMemo, useRef, useState, useEffect } from "react";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import { useInfiniteQuery } from "@tanstack/react-query";
-import { fetchInvoices, type Invoice } from "@/lib/api";
+import { fetchInvoices, resolveInvoiceCategory, type Invoice, type InvoiceCategory } from "@/lib/api";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { FundingProgressBar } from "@/components/invoices";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -174,6 +174,31 @@ export default function MarketplacePage() {
     parsePageSize(searchParams.get("pageSize"))
   );
 
+  // Category tab and named sort order for the discovery surface (#452). The
+  // category is seeded from the URL so a filtered view is shareable.
+  const [category, setCategory] = useState<InvoiceCategory>(() => {
+    const raw = searchParams.get("category");
+    return raw && ["all", "trade_finance", "real_estate", "sme"].includes(raw)
+      ? (raw as InvoiceCategory)
+      : "all";
+  });
+
+  /**
+   * Named sort order, or `null` when the user hasn't chosen one.
+   *
+   * `null` means "keep the order the API returned", which is the default
+   * view — the backend already sorts by recency and applying a client sort on
+   * top would silently reorder rows the user did not ask to reorder. The
+   * dropdown still displays "Newest" so the control never looks unset; it just
+   * isn't *applied* until picked.
+   */
+  const [namedSort, setNamedSort] = useState<MarketplaceSort | null>(() => {
+    const raw = searchParams.get("sort");
+    return raw && (SORT_OPTIONS as readonly string[]).includes(raw)
+      ? (raw as MarketplaceSort)
+      : null;
+  });
+
   // The cursor the list was scrolled to when the user navigated away, read once
   // on mount so a browser Back restores their position (Issue #365). Captured in
   // a ref rather than state: it seeds `initialPageParam` and must not change
@@ -282,10 +307,27 @@ export default function MarketplacePage() {
     [observer]
   );
 
-  const allInvoices = useMemo(
-    () => data?.pages.flatMap((p) => p.invoices) ?? [],
-    [data]
-  );
+  /**
+   * Flattens the accumulated pages, de-duplicating by invoice id.
+   *
+   * Cursor pagination can legitimately hand back a row that straddles a page
+   * boundary (the cursor is resolved after filtering, so a concurrent insert
+   * can shift it), and a background refetch can append a page that overlaps
+   * one already loaded. React would warn on duplicate keys and the grid would
+   * show the same invoice twice, so first-seen wins.
+   */
+  const allInvoices = useMemo(() => {
+    const seen = new Set<string>();
+    const result: Invoice[] = [];
+    for (const page of data?.pages ?? []) {
+      for (const invoice of page.invoices) {
+        if (seen.has(invoice.id)) continue;
+        seen.add(invoice.id);
+        result.push(invoice);
+      }
+    }
+    return result;
+  }, [data]);
 
   /**
    * Mirrors the furthest-loaded cursor into the URL (Issue #365).
@@ -322,13 +364,25 @@ export default function MarketplacePage() {
       params.delete("pageSize");
     }
 
+    if (category !== "all") {
+      params.set("category", category);
+    } else {
+      params.delete("category");
+    }
+
+    if (namedSort) {
+      params.set("sort", namedSort);
+    } else {
+      params.delete("sort");
+    }
+
     const next = params.toString();
     // Only write when something actually changed, or the effect re-triggers
     // itself through `searchParams` on every render.
     if (next !== searchParams.toString()) {
       router.replace(next ? `${pathname}?${next}` : pathname, { scroll: false });
     }
-  }, [lastCursor, pageSize, pathname, router, searchParams]);
+  }, [lastCursor, pageSize, category, namedSort, pathname, router, searchParams]);
 
   const handlePageSizeChange = useCallback((value: string) => {
     const next = parsePageSize(value);
@@ -361,6 +415,9 @@ export default function MarketplacePage() {
 
   const handleSort = useCallback(
     (field: SortField) => {
+      // Picking a column sort clears the named sort, and vice versa, so the
+      // grid never appears to ignore a click.
+      setNamedSort(null);
       if (sortField === field) {
         if (sortDirection === "asc") {
           setSortDirection("desc");
@@ -375,6 +432,21 @@ export default function MarketplacePage() {
     },
     [sortField, sortDirection]
   );
+
+  const handleNamedSortChange = useCallback(
+    (next: MarketplaceSort) => {
+      setNamedSort(next);
+      // A column sort would otherwise still take precedence and the dropdown
+      // would appear inert.
+      setSortField(null);
+      setSortDirection("asc");
+    },
+    []
+  );
+
+  const handleCategoryChange = useCallback((next: InvoiceCategory) => {
+    setCategory(next);
+  }, []);
 
   const handleClearAll = useCallback(() => {
     const emptyFilters: MarketplaceFilterState = {
@@ -391,6 +463,8 @@ export default function MarketplacePage() {
     setDebouncedSearch("");
     setSortField(null);
     setSortDirection("asc");
+    setCategory("all");
+    setNamedSort(null);
     router.replace(pathname, { scroll: false });
   }, [pathname, router]);
 
@@ -398,10 +472,12 @@ export default function MarketplacePage() {
     let result = allInvoices.filter((inv) => {
       // Bar status filter
       const matchesBarStatus = status === "all" || inv.status === status;
-      // Search filter
-      const matchesSearch =
-        debouncedSearch === "" ||
-        inv.title.toLowerCase().includes(debouncedSearch.toLowerCase());
+
+      // Category tab filter (#452). Invoices with no recognised category are
+      // only visible on the "All" tab — bucketing them into every category
+      // would make the tab counts disagree with what the grid shows.
+      const matchesCategory =
+        category === "all" || resolveInvoiceCategory(inv.category) === category;
 
       // Panel funding status filter
       let matchesPanelStatus = true;
@@ -449,7 +525,7 @@ export default function MarketplacePage() {
 
       return (
         matchesBarStatus &&
-        matchesSearch &&
+        matchesCategory &&
         matchesPanelStatus &&
         matchesYield &&
         matchesFromDate &&
@@ -459,6 +535,13 @@ export default function MarketplacePage() {
       );
     });
 
+    // Text search runs after the facet filters so it narrows an already-small
+    // set. Matches title, issuer, invoice number, and id.
+    result = searchInvoices(result, debouncedSearch);
+
+    // A column sort and a named sort are mutually exclusive: whichever the
+    // user picked last is the one that applies, so the grid never appears to
+    // ignore a click.
     if (sortField) {
       result = [...result].sort((a, b) => {
         let comparison: number;
@@ -469,10 +552,24 @@ export default function MarketplacePage() {
         }
         return sortDirection === "asc" ? comparison : -comparison;
       });
+    } else if (namedSort) {
+      // No column sort active, so the named order (newest / highest yield /
+      // closing soon) chosen from the dropdown applies.
+      result = sortInvoices(result, namedSort);
     }
+    // Otherwise: keep the order the API returned.
 
     return result;
-  }, [allInvoices, status, debouncedSearch, panelFilters, sortField, sortDirection]);
+  }, [
+    allInvoices,
+    status,
+    category,
+    debouncedSearch,
+    panelFilters,
+    sortField,
+    sortDirection,
+    namedSort,
+  ]);
 
   if (isLoading) {
     return (
@@ -494,8 +591,11 @@ export default function MarketplacePage() {
 
   return (
     <ComparisonProvider>
-      <main className="container mx-auto px-4 py-8 pb-24">
-        <h1 className="text-2xl font-bold mb-6">Invoice Marketplace</h1>
+      <main className="container mx-auto px-4 py-8 pb-24 space-y-8">
+        <h1 className="text-2xl font-bold">Invoice Marketplace</h1>
+
+        {/* Featured: highest-yield live invoices, the discovery hook above the fold. */}
+        <FeaturedInvoicesCarousel invoices={allInvoices} />
 
         <div className="flex flex-col md:flex-row gap-6">
           {/* Collapsible Filter Panel on the left */}
@@ -514,6 +614,9 @@ export default function MarketplacePage() {
               onClear={handleClearAll}
             />
 
+            {/* Category tabs. Client-side filter — no navigation, no reload. */}
+            <CategoryTabs value={category} onChange={handleCategoryChange} />
+
             {isFetching && !isLoading && (
               <div className="flex items-center gap-2 text-sm text-muted-foreground my-4">
                 <Loader2 className="size-3 animate-spin" />
@@ -521,7 +624,7 @@ export default function MarketplacePage() {
               </div>
             )}
 
-            <div className="flex items-center gap-6 mb-4 mt-4 text-sm text-muted-foreground">
+            <div className="flex flex-wrap items-center gap-6 mb-4 mt-4 text-sm text-muted-foreground">
               <SortHeader
                 label="Face Value"
                 field="amount"
@@ -538,6 +641,34 @@ export default function MarketplacePage() {
               />
 
               <div className="ml-auto flex items-center gap-2">
+                <label
+                  htmlFor="marketplace-sort"
+                  className="text-xs text-muted-foreground"
+                >
+                  Sort
+                </label>
+                <Select
+                  value={namedSort ?? "newest"}
+                  onValueChange={(value) =>
+                    handleNamedSortChange(value as MarketplaceSort)
+                  }
+                >
+                  <SelectTrigger
+                    id="marketplace-sort"
+                    className="h-8 w-[9.5rem]"
+                    data-testid="marketplace-sort-select"
+                  >
+                    <SelectValue>{SORT_LABELS[namedSort ?? "newest"]}</SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {SORT_OPTIONS.map((option) => (
+                      <SelectItem key={option} value={option}>
+                        {SORT_LABELS[option]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
                 <label
                   htmlFor="marketplace-page-size"
                   className="text-xs text-muted-foreground"
@@ -566,7 +697,15 @@ export default function MarketplacePage() {
               </div>
             </div>
 
-            <div className="space-y-4">
+            <p
+              className="text-sm text-muted-foreground"
+              data-testid="marketplace-result-count"
+              aria-live="polite"
+            >
+              {filtered.length} {filtered.length === 1 ? "invoice" : "invoices"}
+            </p>
+
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
               {filtered.length === 0 ? (
                 <p className="py-12 text-center text-muted-foreground" data-testid="no-invoices-msg">
                   No invoices match your filters.

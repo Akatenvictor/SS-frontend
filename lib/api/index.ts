@@ -11,10 +11,56 @@ export interface Invoice {
   rejection_reason?: string;
   /** Risk grade (A = safest). Used to gate investing by suitability tier (#391). */
   risk_rating?: { tier: "A" | "B" | "C" | "D"; score?: number };
+  /** Sector category, used by the marketplace category tabs (#452). */
+  category?: string;
+  /** Human-facing invoice reference, searchable from the marketplace search bar. */
+  invoice_number?: string;
+  /** When the invoice was published, used for the "newest" sort order (#452). */
+  created_at?: string;
   has_more: boolean;
   next_cursor: string | null;
   /** Issuer reputation 0-100; absent when the issuer has no settlement history. */
   issuer_score?: number;
+}
+
+/** Category tabs on the marketplace homepage (#452). */
+export const INVOICE_CATEGORIES = [
+  "all",
+  "trade_finance",
+  "real_estate",
+  "sme",
+] as const;
+
+export type InvoiceCategory = (typeof INVOICE_CATEGORIES)[number];
+
+export const CATEGORY_LABELS: Record<InvoiceCategory, string> = {
+  all: "All",
+  trade_finance: "Trade Finance",
+  real_estate: "Real Estate",
+  sme: "SME",
+};
+
+/**
+ * Maps an invoice's raw category onto a known tab, defaulting to `all`.
+ *
+ * Backends spell the same sector several ways ("trade_finance",
+ * "trade-finance", "Trade Receivable"), and the resale endpoint uses its own
+ * taxonomy (`trade_receivable`, `supply_chain`, `promissory_note`, …). Those
+ * collapse into the three tabs investors actually browse by.
+ */
+export function resolveInvoiceCategory(raw: unknown): Exclude<InvoiceCategory, "all"> | null {
+  const v = String(raw ?? "").toLowerCase().replace(/[-\s]+/g, "_");
+  if (!v) return null;
+  if (v.includes("trade") || v.includes("receivable") || v.includes("supply_chain")) {
+    return "trade_finance";
+  }
+  if (v.includes("real_estate") || v.includes("property") || v.includes("mortgage")) {
+    return "real_estate";
+  }
+  if (v.includes("sme") || v.includes("small") || v.includes("promissory") || v.includes("service") || v.includes("equipment") || v.includes("lease")) {
+    return "sme";
+  }
+  return null;
 }
 
 export interface InvoiceDetail extends Invoice {
@@ -696,6 +742,9 @@ export interface PayoutRecord {
   amountReceived: number;
   yield: number;
   settledAt: string;
+  /** Settlement tx hash, when the backend reports one (#450). */
+  transaction_hash?: string;
+  transactionHash?: string;
 }
 
 export interface PayoutsResponse {
@@ -765,8 +814,15 @@ function authHeaders(token?: string): Record<string, string> {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
-/** Reads a server-provided error message, falling back to a generic one. */
-async function readConflictErrorMessage(res: Response, fallback: string): Promise<string> {
+/**
+ * Reads a server-provided error message, falling back to a generic one.
+ *
+ * Named for its general use — the ~15 call sites that surface a backend
+ * message to the user all need this, not just the 409 conflict paths. The
+ * alias below is kept for the conflict-specific call sites that predate the
+ * rename.
+ */
+async function readErrorMessage(res: Response, fallback: string): Promise<string> {
   try {
     const payload = await res.json();
     const message = payload?.message ?? payload?.error;
@@ -775,6 +831,8 @@ async function readConflictErrorMessage(res: Response, fallback: string): Promis
     return fallback;
   }
 }
+
+const readConflictErrorMessage = readErrorMessage;
 
 function normalizeCreatorKeyDetail(raw: any): CreatorKeyDetail {
   return {
@@ -1676,6 +1734,186 @@ export async function unsuspendAdminUser(
   return res.json();
 }
 
+// #451 — Admin user management: KYC status, approve/reject/flag actions, KYC history
+
+export type KycStatus = "pending" | "approved" | "rejected" | "flagged" | "not_submitted";
+
+export interface AdminUserRowExtended extends AdminUserRow {
+  email: string;
+  kyc_status: KycStatus;
+  kyc_submitted_at?: string;
+  accreditation_tier: "unaccredited" | "accredited" | "qualified";
+  flagged: boolean;
+  flag_reason?: string;
+}
+
+export interface AdminUsersExtendedResponse {
+  users: AdminUserRowExtended[];
+  has_more: boolean;
+  next_cursor: string | null;
+}
+
+export interface KycHistoryEntry {
+  id: string;
+  wallet: string;
+  status: KycStatus;
+  submitted_at: string;
+  reviewed_at?: string;
+  reviewed_by?: string;
+  rejection_reason?: string;
+  documents: string[];
+}
+
+export interface KycHistoryResponse {
+  history: KycHistoryEntry[];
+  has_more: boolean;
+  next_cursor: string | null;
+}
+
+const KYC_STATUSES: KycStatus[] = [
+  "pending",
+  "approved",
+  "rejected",
+  "flagged",
+  "not_submitted",
+];
+
+function normalizeKycStatus(raw: any): KycStatus {
+  const v = String(raw ?? "").toLowerCase().replace(/[-\s]/g, "_");
+  if ((KYC_STATUSES as string[]).includes(v)) return v as KycStatus;
+  if (v === "notsubmitted" || v === "none" || v === "missing") return "not_submitted";
+  if (v === "in_review" || v === "inreview" || v === "under_review") return "flagged";
+  return "not_submitted";
+}
+
+const ADMIN_USER_ACCREDITATION_TIERS: AdminUserRowExtended["accreditation_tier"][] = [
+  "unaccredited",
+  "accredited",
+  "qualified",
+];
+
+/**
+ * The KYC columns were added after the original user list endpoint shipped, so
+ * a backend that predates them omits the fields entirely. Normalising here
+ * keeps the table rendering instead of showing blanks or crashing on
+ * `user.kyc_status` — an unrecognised status degrades to "Not Submitted".
+ */
+export function normalizeAdminUserRowExtended(raw: any): AdminUserRowExtended {
+  const accreditation = String(
+    raw.accreditation_tier ?? raw.accreditationTier ?? "unaccredited"
+  ).toLowerCase();
+  const flagged = Boolean(raw.flagged ?? raw.is_flagged ?? raw.isFlagged ?? false);
+
+  return {
+    wallet: String(raw.wallet ?? raw.address ?? ""),
+    role: (raw.role ?? "user") as AdminUserRole,
+    suspended: Boolean(raw.suspended ?? false),
+    joined_at: String(raw.joined_at ?? raw.joinedAt ?? raw.created_at ?? ""),
+    email: String(raw.email ?? ""),
+    kyc_status: flagged ? "flagged" : normalizeKycStatus(raw.kyc_status ?? raw.kycStatus),
+    kyc_submitted_at:
+      raw.kyc_submitted_at ?? raw.kycSubmittedAt ?? raw.submitted_at ?? undefined,
+    accreditation_tier: (ADMIN_USER_ACCREDITATION_TIERS as string[]).includes(accreditation)
+      ? (accreditation as AdminUserRowExtended["accreditation_tier"])
+      : "unaccredited",
+    flagged,
+    flag_reason: raw.flag_reason ?? raw.flagReason ?? undefined,
+  };
+}
+
+export function normalizeAdminUsersExtendedResponse(
+  raw: any
+): AdminUsersExtendedResponse {
+  const list = Array.isArray(raw) ? raw : (raw?.users ?? []);
+  return {
+    users: (Array.isArray(list) ? list : []).map(normalizeAdminUserRowExtended),
+    has_more: Boolean(raw?.has_more ?? false),
+    next_cursor: raw?.next_cursor ?? null,
+  };
+}
+
+export async function fetchAdminUsersExtended(
+  search = "",
+  cursor?: string,
+  token?: string
+): Promise<AdminUsersExtendedResponse> {
+  const params = new URLSearchParams();
+  if (search) params.set("search", search);
+  if (cursor) params.set("cursor", cursor);
+
+  const res = await fetch(`${API_BASE}/admin/users?${params}`, {
+    headers: authHeaders(token),
+  });
+  if (!res.ok) {
+    throw new Error(await readErrorMessage(res, "Failed to fetch users"));
+  }
+  return normalizeAdminUsersExtendedResponse(await res.json());
+}
+
+export async function updateUserKycStatus(
+  wallet: string,
+  status: KycStatus,
+  reason?: string,
+  token?: string
+): Promise<{ success: boolean }> {
+  const res = await fetch(`${API_BASE}/admin/users/${wallet}/kyc`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...authHeaders(token) },
+    body: JSON.stringify({ status, reason }),
+  });
+  if (!res.ok) {
+    throw new Error(await readErrorMessage(res, "Failed to update KYC status"));
+  }
+  return res.json();
+}
+
+export async function flagUser(
+  wallet: string,
+  reason: string,
+  token?: string
+): Promise<{ success: boolean }> {
+  const res = await fetch(`${API_BASE}/admin/users/${wallet}/flag`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders(token) },
+    body: JSON.stringify({ reason }),
+  });
+  if (!res.ok) {
+    throw new Error(await readErrorMessage(res, "Failed to flag user"));
+  }
+  return res.json();
+}
+
+export async function unflagUser(
+  wallet: string,
+  token?: string
+): Promise<{ success: boolean }> {
+  const res = await fetch(`${API_BASE}/admin/users/${wallet}/unflag`, {
+    method: "POST",
+    headers: authHeaders(token),
+  });
+  if (!res.ok) {
+    throw new Error(await readErrorMessage(res, "Failed to unflag user"));
+  }
+  return res.json();
+}
+
+export async function fetchKycHistory(
+  wallet: string,
+  cursor?: string,
+  token?: string
+): Promise<KycHistoryResponse> {
+  const params = new URLSearchParams();
+  if (cursor) params.set("cursor", cursor);
+
+  const res = await fetch(`${API_BASE}/admin/users/${wallet}/kyc/history?${params}`, {
+    headers: authHeaders(token),
+  });
+  if (!res.ok) {
+    throw new Error(await readErrorMessage(res, "Failed to fetch KYC history"));
+  }
+  return res.json();
+}
+
 // #319 — Public creator profile: issued invoices, funding stats, and
 // settlement track record. Public endpoints; no wallet connection required.
 
@@ -2009,7 +2247,7 @@ function normalizeFeeTierInfo(raw: any): FeeTierInfo {
   const volume_24h = Number(
     raw.volume_24h ?? raw.volume24h ?? raw.volume ?? 0
   );
-  const lowestFee = Math.min(...tiers.map((t) => t.fee_percentage));
+  const lowestFee = Math.min(...tiers.map((t: FeeTierEntry) => t.fee_percentage));
   return {
     fee_percentage,
     tier_label,
@@ -2703,3 +2941,159 @@ export async function submitInvoiceRating(
   if (!res.ok) throw new Error("Failed to submit rating");
   return normalizeInvoiceRating(await res.json(), invoiceId);
 }
+
+// ─── Public fee schedule (issue #450) ────────────────────────────────────────
+
+export type FeeType =
+  | "investment_fee"
+  | "secondary_market_fee"
+  | "settlement_fee"
+  | "early_exit_penalty";
+
+export interface FeeScheduleEntry {
+  fee_type: FeeType;
+  label: string;
+  rate_percentage: number;
+  description: string;
+  when_applies: string;
+  applies_to: "investor" | "issuer" | "both";
+}
+
+export interface FeeScheduleResponse {
+  fees: FeeScheduleEntry[];
+  last_updated: string;
+}
+
+const FEE_TYPE_LABELS: Record<FeeType, string> = {
+  investment_fee: "Investment Fee",
+  secondary_market_fee: "Secondary Market Fee",
+  settlement_fee: "Settlement Fee",
+  early_exit_penalty: "Early Exit Penalty",
+};
+
+const FEE_TYPE_DEFAULTS: FeeScheduleEntry[] = [
+  {
+    fee_type: "investment_fee",
+    label: "Investment Fee",
+    rate_percentage: 2.5,
+    description: "Platform fee charged on each investment into a live invoice",
+    when_applies: "When investor commits funds to an open invoice",
+    applies_to: "investor",
+  },
+  {
+    fee_type: "secondary_market_fee",
+    label: "Secondary Market Fee",
+    rate_percentage: 1.5,
+    description: "Fee on resale transactions in the secondary marketplace",
+    when_applies: "When fractions are sold on the secondary market",
+    applies_to: "investor",
+  },
+  {
+    fee_type: "settlement_fee",
+    label: "Settlement Fee",
+    rate_percentage: 1.0,
+    description: "Fee deducted from gross proceeds when an invoice settles",
+    when_applies: "When invoice matures and issuer repays",
+    applies_to: "issuer",
+  },
+  {
+    fee_type: "early_exit_penalty",
+    label: "Early Exit Penalty",
+    rate_percentage: 5.0,
+    description: "Penalty for exiting an investment before maturity via secondary market",
+    when_applies: "When investor sells position before invoice due date",
+    applies_to: "investor",
+  },
+];
+
+function normalizeFeeScheduleEntry(raw: any): FeeScheduleEntry {
+  const feeType = raw.fee_type ?? raw.feeType ?? "";
+  return {
+    fee_type: feeType as FeeType,
+    label: raw.label ?? FEE_TYPE_LABELS[feeType as FeeType] ?? feeType,
+    rate_percentage: Number(raw.rate_percentage ?? raw.ratePercentage ?? raw.rate ?? 0),
+    description: raw.description ?? "",
+    when_applies: raw.when_applies ?? raw.whenApplies ?? "",
+    applies_to: raw.applies_to ?? raw.appliesTo ?? "both",
+  };
+}
+
+function normalizeFeeSchedule(raw: any): FeeScheduleResponse {
+  const fees = Array.isArray(raw.fees)
+    ? raw.fees.map(normalizeFeeScheduleEntry)
+    : FEE_TYPE_DEFAULTS;
+  return {
+    fees,
+    last_updated: raw.last_updated ?? raw.lastUpdated ?? new Date().toISOString(),
+  };
+}
+
+export async function fetchFeeSchedule(): Promise<FeeScheduleResponse> {
+  const res = await fetch(`${API_BASE}/protocol/fee-schedule`);
+  if (!res.ok) {
+    return {
+      fees: FEE_TYPE_DEFAULTS,
+      last_updated: new Date().toISOString(),
+    };
+  }
+  return normalizeFeeSchedule(await res.json());
+}
+
+// Industry benchmark data for comparison
+export interface IndustryBenchmark {
+  platform: string;
+  investment_fee: number;
+  secondary_market_fee: number;
+  settlement_fee: number;
+  early_exit_penalty: number;
+  source: string;
+  source_url: string;
+}
+
+export const INDUSTRY_BENCHMARKS: IndustryBenchmark[] = [
+  {
+    platform: "Stellar Invoice Marketplace (This Platform)",
+    investment_fee: 2.5,
+    secondary_market_fee: 1.5,
+    settlement_fee: 1.0,
+    early_exit_penalty: 5.0,
+    source: "Platform Fee Schedule",
+    source_url: "/fees",
+  },
+  {
+    platform: "Traditional Invoice Factoring",
+    investment_fee: 3.0,
+    secondary_market_fee: 2.5,
+    settlement_fee: 2.0,
+    early_exit_penalty: 8.0,
+    source: "Industry Average 2024",
+    source_url: "https://www.factoring.org/industry-data",
+  },
+  {
+    platform: "Peer-to-Peer Lending Platforms",
+    investment_fee: 1.0,
+    secondary_market_fee: 1.0,
+    settlement_fee: 1.5,
+    early_exit_penalty: 3.0,
+    source: "LendingClub / Prosper Public Filings",
+    source_url: "https://www.lendingclub.com/investing/fees",
+  },
+  {
+    platform: "Real Estate Crowdfunding",
+    investment_fee: 2.0,
+    secondary_market_fee: 2.0,
+    settlement_fee: 1.5,
+    early_exit_penalty: 6.0,
+    source: "Fundrise / RealtyMogul Fee Schedules",
+    source_url: "https://www.fundrise.com/fees",
+  },
+  {
+    platform: "Trade Finance Platforms",
+    investment_fee: 2.5,
+    secondary_market_fee: 2.0,
+    settlement_fee: 1.5,
+    early_exit_penalty: 4.0,
+    source: "Marco Polo / we.trade Public Data",
+    source_url: "https://www.marcopolonetwork.com/",
+  },
+];
