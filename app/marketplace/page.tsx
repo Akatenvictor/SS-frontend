@@ -10,88 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { InvoiceCardSkeleton } from "@/components/ui/skeletons";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import {
-  MarketplaceFilterBar,
-  FilterPanel,
-  MarketplaceFilterState,
-  FundingStatus,
-  isExpired,
-  ComparisonProvider,
-  InvoiceComparisonBar,
-  TaxonomyFilterPanel,
-  ActiveTaxonomyChips,
-  InvoiceTagPills,
-  SettlementCountdown,
-  InvestorDemandMetrics,
-} from "@/components/marketplace";
-import {
-  EMPTY_TAXONOMY_FILTERS,
-  applyTaxonomyFilters,
-  filterByTaxonomy,
-  hasActiveTaxonomyFilters,
-  parseTaxonomyFilters,
-  removeTaxonomyFilterValue,
-  type FilterChip,
-  type TaxonomyFilterState,
-} from "@/lib/invoiceTaxonomy";
-import { Loader2, ArrowUp, ArrowDown } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-
-/**
- * Page sizes offered by the selector (Issue #365).
- *
- * Kept as a closed set rather than a free number input: the value goes straight
- * into the API `limit`, and an arbitrary one lets a client ask for the whole
- * table in a single request.
- */
-const PAGE_SIZE_OPTIONS = [10, 25, 50] as const;
-type PageSize = (typeof PAGE_SIZE_OPTIONS)[number];
-const DEFAULT_PAGE_SIZE: PageSize = 25;
-
-function parsePageSize(raw: string | null): PageSize {
-  const parsed = Number(raw);
-  return (PAGE_SIZE_OPTIONS as readonly number[]).includes(parsed)
-    ? (parsed as PageSize)
-    : DEFAULT_PAGE_SIZE;
-}
-
-type SortField = "amount" | "due_date" | null;
-type SortDirection = "asc" | "desc";
-
-function SortHeader({
-  label,
-  field,
-  activeField,
-  activeDirection,
-  onSort,
-}: {
-  label: string;
-  field: SortField;
-  activeField: SortField;
-  activeDirection: SortDirection;
-  onSort: (field: SortField) => void;
-}) {
-  const isActive = activeField === field;
-  return (
-    <button
-      type="button"
-      onClick={() => onSort(field)}
-      className="inline-flex items-center gap-1 text-sm font-medium hover:text-foreground transition-colors"
-      data-testid={`sort-${field}`}
-    >
-      {label}
-      {isActive && activeDirection === "asc" && <ArrowUp className="size-3" />}
-      {isActive && activeDirection === "desc" && <ArrowDown className="size-3" />}
-    </button>
-  );
-}
+import { WatchlistButton } from "@/components/marketplace/WatchlistButton";
 
 function InvoiceRow({ invoice }: { invoice: Invoice }) {
   return (
@@ -99,9 +18,12 @@ function InvoiceRow({ invoice }: { invoice: Invoice }) {
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between gap-3">
           <h3 className="font-semibold">{invoice.title}</h3>
-          <Badge variant={invoice.status === "open" ? "default" : "secondary"}>
-            {invoice.status}
-          </Badge>
+          <div className="flex items-center gap-2">
+            <Badge variant={invoice.status === "open" ? "default" : "secondary"}>
+              {invoice.status}
+            </Badge>
+            <WatchlistButton invoiceId={invoice.id} />
+          </div>
         </div>
         <InvoiceTagPills invoice={invoice} />
       </CardHeader>
@@ -897,7 +819,3 @@ export default function MarketplacePage() {
     </ComparisonProvider>
   );
 }
-
-
-
-
