@@ -239,7 +239,7 @@ export function NotificationCenter() {
               >
                 <Inbox className="h-6 w-6 text-muted-foreground" />
                 <p className="text-sm font-medium">No notifications</p>
-                <p className="text-xs text-muted-foreground">You're all caught up.</p>
+                <p className="text-xs text-muted-foreground">You&apos;re all caught up.</p>
               </div>
             ) : (
               <ul data-testid="notification-list">

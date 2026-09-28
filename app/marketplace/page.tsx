@@ -59,6 +59,9 @@ function InvoiceRow({ invoice }: { invoice: Invoice }) {
             target={invoice.amount}
             investorCount={invoice.investor_count}
           />
+          <div className="mt-3 flex justify-end">
+            <CompareToggleButton invoice={invoice} />
+          </div>
         </div>
       </CardContent>
     </Card>

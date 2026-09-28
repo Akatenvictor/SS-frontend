@@ -6,7 +6,11 @@ import { Button } from "@/components/ui/button";
 import { InvestmentAmountInput } from "@/components/invoices/InvestmentAmountInput";
 import { FeeTierDisplay } from "@/components/invoices/FeeTierDisplay";
 import { PriceImpactWarning } from "@/components/invoices/PriceImpactWarning";
+import { TopUpCta } from "@/components/wallet/TopUpCta";
 import { useInvestMutation } from "@/hooks/useInvestments";
+import { useUsdcBalance } from "@/hooks/useUsdcBalance";
+import { useWallet } from "@/context/WalletContext";
+import { formatUsdc } from "@/lib/format";
 import {
   Popover,
   PopoverContent,
@@ -32,13 +36,23 @@ export function InvestmentModal({
   const [isOpen, setIsOpen] = useState(false);
   const [validAmount, setValidAmount] = useState<number | null>(null);
   const investMutation = useInvestMutation();
+  const { address, network } = useWallet();
+  const { balance, refresh } = useUsdcBalance(address, network);
+
+  // A null balance means the balance is still unknown, which is not the same as
+  // being underfunded, so it must not block the investment.
+  const insufficientBalance =
+    balance !== null && validAmount !== null && validAmount > balance;
 
   const handleInvest = async () => {
-    if (validAmount === null) return;
+    if (validAmount === null || insufficientBalance) return;
 
     await investMutation.mutateAsync({ invoiceId, amount: validAmount });
     setIsOpen(false);
     setValidAmount(null);
+    // The chain has moved; re-read the balance instead of waiting for the
+    // 60s poll.
+    refresh();
     onSuccess?.();
   };
 
@@ -56,11 +70,29 @@ export function InvestmentModal({
             </p>
           </div>
 
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-muted-foreground">Wallet USDC balance</span>
+            <span
+              className="font-medium tabular-nums"
+              data-testid="investment-modal-balance"
+            >
+              {balance === null ? "Loading…" : formatUsdc(balance)}
+            </span>
+          </div>
+
           <InvestmentAmountInput
             min={minInvestment}
             max={maxInvestment}
             onValidAmountChange={setValidAmount}
           />
+
+          {insufficientBalance && address && (
+            <TopUpCta
+              address={address}
+              balance={balance}
+              requiredAmount={validAmount as number}
+            />
+          )}
 
           <FeeTierDisplay amount={validAmount} />
 
@@ -94,7 +126,12 @@ export function InvestmentModal({
             </Button>
             <Button
               onClick={handleInvest}
-              disabled={validAmount === null || investMutation.isPending}
+              disabled={
+                validAmount === null ||
+                investMutation.isPending ||
+                insufficientBalance
+              }
+              data-testid="investment-submit"
               className="flex-1"
             >
               {investMutation.isPending ? "Investing..." : "Invest"}

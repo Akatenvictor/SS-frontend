@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import React from "react";
+import { ComparisonProvider } from "@/components/marketplace/InvoiceComparisonContext";
 import MarketplacePage from "../page";
 
 vi.mock("@tanstack/react-query", async () => {
@@ -32,8 +33,11 @@ function createWrapper() {
     defaultOptions: { queries: { retry: false } },
   });
   return function Wrapper({ children }: { children: React.ReactNode }) {
+    // Each row renders an "Add to compare" control backed by the compare context.
     return (
-      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+      <QueryClientProvider client={queryClient}>
+        <ComparisonProvider>{children}</ComparisonProvider>
+      </QueryClientProvider>
     );
   };
 }

@@ -3,8 +3,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { FundingProgressBar } from "@/components/invoices/FundingProgressBar";
 import { CountdownTimer, isExpired } from "./countdown-timer";
-import { useComparison } from "./InvoiceComparisonContext";
-import { Lock, Scale } from "lucide-react";
+import { CompareToggleButton } from "./CompareToggleButton";
+import { Lock } from "lucide-react";
 import type { Invoice } from "@/lib/api";
 import { useSuitabilityTier } from "@/hooks/useSuitabilityTier";
 import { REQUIRED_TIER, TIER_LABELS, canInvestInGrade } from "@/lib/suitability";
@@ -23,8 +23,6 @@ interface InvoiceCardProps {
 export function InvoiceCard({ invoice, onInvest }: InvoiceCardProps) {
   const published = invoice.status === "open";
   const expired = isExpired(invoice.due_date);
-  const { addToCompare, isInCompare, compareInvoices } = useComparison();
-  const canAddToCompare = !isInCompare(invoice.id) && compareInvoices.length < 2;
   const { tier } = useSuitabilityTier();
   const grade = invoice.risk_rating?.tier;
   const locked = !canInvestInGrade(tier, grade);
@@ -74,15 +72,7 @@ export function InvoiceCard({ invoice, onInvest }: InvoiceCardProps) {
           >
             {expired ? "Expired" : locked ? "Locked" : "Invest"}
           </Button>
-          <Button
-            variant="outline"
-            size="icon"
-            disabled={!canAddToCompare}
-            onClick={() => addToCompare(invoice)}
-            title="Add to compare"
-          >
-            <Scale className="h-4 w-4" />
-          </Button>
+          <CompareToggleButton invoice={invoice} />
         </div>
       </CardContent>
     </Card>

@@ -216,7 +216,15 @@ export function InvoiceDetailView({ invoiceId }: InvoiceDetailViewProps) {
                 </h1>
                 <p className="mt-1 text-sm text-muted-foreground" data-testid="invoice-issuer">
                   Issuer:{" "}
-                  <span className="font-mono">{truncateAddress(invoice.seller)}</span>
+                  {/* The seller address doubles as the issuer id, so the public
+                      issuer profile (#400) is reachable from every invoice. */}
+                  <Link
+                    href={`/issuers/${encodeURIComponent(invoice.seller)}`}
+                    data-testid="issuer-profile-link"
+                    className="font-mono hover:underline"
+                  >
+                    {truncateAddress(invoice.seller)}
+                  </Link>
                 </p>
               </div>
             </div>
