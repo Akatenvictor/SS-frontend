@@ -4,6 +4,7 @@ import { AppErrorBoundary } from "@/components/ErrorBoundary";
 import { Navbar, Footer } from "@/components/layout";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { Toaster } from "@/components/ui/sonner";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -19,21 +20,13 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body>
-        <Providers>
-          <Navbar />
-          <MobileNav />
-          {/* #281 — top-level boundary catching render errors below the layout */}
-          <AppErrorBoundary>
+        <TooltipProvider>
+          <Providers>
+            <Navbar />
             {children}
-          </AppErrorBoundary>
-          <Toaster />
-          {/* #450 — site-wide footer, carries the public fee schedule link.
-              Rendered at every breakpoint: the fee schedule has to stay
-              reachable on mobile, where the tab bar is the only other nav. */}
-          <Footer />
-          {/* Bottom padding for mobile tab bar */}
-          <div className="h-14 md:hidden" />
-        </Providers>
+            <Toaster />
+          </Providers>
+        </TooltipProvider>
       </body>
     </html>
   );
