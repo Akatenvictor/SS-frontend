@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Providers } from "@/components/providers";
 import { AppErrorBoundary } from "@/components/ErrorBoundary";
-import { Navbar } from "@/components/layout";
+import { Navbar, Footer } from "@/components/layout";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";

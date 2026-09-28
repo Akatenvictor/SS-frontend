@@ -11,8 +11,54 @@ export interface Invoice {
   rejection_reason?: string;
   /** Risk grade (A = safest). Used to gate investing by suitability tier (#391). */
   risk_rating?: { tier: "A" | "B" | "C" | "D"; score?: number };
+  /** Sector category, used by the marketplace category tabs (#452). */
+  category?: string;
+  /** Human-facing invoice reference, searchable from the marketplace search bar. */
+  invoice_number?: string;
+  /** When the invoice was published, used for the "newest" sort order (#452). */
+  created_at?: string;
   has_more: boolean;
   next_cursor: string | null;
+}
+
+/** Category tabs on the marketplace homepage (#452). */
+export const INVOICE_CATEGORIES = [
+  "all",
+  "trade_finance",
+  "real_estate",
+  "sme",
+] as const;
+
+export type InvoiceCategory = (typeof INVOICE_CATEGORIES)[number];
+
+export const CATEGORY_LABELS: Record<InvoiceCategory, string> = {
+  all: "All",
+  trade_finance: "Trade Finance",
+  real_estate: "Real Estate",
+  sme: "SME",
+};
+
+/**
+ * Maps an invoice's raw category onto a known tab, defaulting to `all`.
+ *
+ * Backends spell the same sector several ways ("trade_finance",
+ * "trade-finance", "Trade Receivable"), and the resale endpoint uses its own
+ * taxonomy (`trade_receivable`, `supply_chain`, `promissory_note`, …). Those
+ * collapse into the three tabs investors actually browse by.
+ */
+export function resolveInvoiceCategory(raw: unknown): Exclude<InvoiceCategory, "all"> | null {
+  const v = String(raw ?? "").toLowerCase().replace(/[-\s]+/g, "_");
+  if (!v) return null;
+  if (v.includes("trade") || v.includes("receivable") || v.includes("supply_chain")) {
+    return "trade_finance";
+  }
+  if (v.includes("real_estate") || v.includes("property") || v.includes("mortgage")) {
+    return "real_estate";
+  }
+  if (v.includes("sme") || v.includes("small") || v.includes("promissory") || v.includes("service") || v.includes("equipment") || v.includes("lease")) {
+    return "sme";
+  }
+  return null;
 }
 
 export interface InvoiceDetail extends Invoice {

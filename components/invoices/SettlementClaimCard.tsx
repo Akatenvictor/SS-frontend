@@ -2,8 +2,8 @@
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { TxHash } from "@/components/ui/tx-hash";
 import { Badge } from "@/components/ui/badge";
-import { ExternalLink } from "lucide-react";
 import { useCurrency } from "@/hooks/useCurrency";
 import type { ClaimableSettlement, ClaimedHistory } from "@/hooks/useSettlements";
 
@@ -87,15 +87,10 @@ export function ClaimedHistoryCard({ entry }: ClaimedHistoryCardProps) {
           </div>
         </div>
         {entry.tx_hash && (
-          <a
-            href={`https://stellar.expert/explorer/public/tx/${entry.tx_hash}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 text-xs text-primary hover:underline mt-2"
-            data-testid="tx-link"
-          >
-            View Transaction <ExternalLink className="h-3 w-3" />
-          </a>
+          <div className="mt-2 flex items-center gap-1 text-xs">
+            <span className="text-muted-foreground">View transaction:</span>
+            <TxHash hash={entry.tx_hash} className="text-xs" testId="tx-link" />
+          </div>
         )}
       </CardContent>
     </Card>

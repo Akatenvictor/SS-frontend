@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { InvestmentAmountInput } from "@/components/invoices/InvestmentAmountInput";
 import { FeeTierDisplay } from "@/components/invoices/FeeTierDisplay";
@@ -51,7 +52,7 @@ export function InvestmentModal({
           <div className="space-y-2">
             <h3 className="font-semibold">Invest in this Invoice</h3>
             <p className="text-sm text-muted-foreground">
-              Enter the amount you'd like to invest
+              Enter the amount you&apos;d like to invest
             </p>
           </div>
 
@@ -62,6 +63,21 @@ export function InvestmentModal({
           />
 
           <FeeTierDisplay amount={validAmount} />
+
+          {/* #450 — link to the full public fee schedule so the tier shown
+              above can be read in context (what it applies to, and the other
+              fees that will hit this investment later). */}
+          <p className="text-xs text-muted-foreground">
+            See the{" "}
+            <Link
+              href="/fees"
+              className="underline underline-offset-2 hover:text-foreground"
+              data-testid="investment-modal-fees-link"
+            >
+              full fee schedule
+            </Link>{" "}
+            for every fee that applies.
+          </p>
 
           <PriceImpactWarning
             amount={validAmount}

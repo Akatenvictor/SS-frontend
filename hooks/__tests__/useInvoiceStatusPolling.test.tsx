@@ -35,6 +35,8 @@ function invoiceDetail(status: api.Invoice["status"]): api.InvoiceDetail {
     description: "",
     investors: [],
     document_url: "",
+    has_more: false,
+    next_cursor: null,
   };
 }
 
