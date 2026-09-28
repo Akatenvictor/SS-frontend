@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { TxHash } from "@/components/ui/tx-hash";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -11,7 +11,6 @@ import {
   useInvestorDividends,
 } from "@/hooks/useDividends";
 
-const EXPLORER_BASE = "https://stellar.expert/explorer/testnet/tx";
 
 function formatDate(value: string): string {
   if (!value) return "—";
@@ -177,16 +176,12 @@ export function DividendClaimPage() {
                       {formatDate(entry.claimed_at)} · {entry.amount.toLocaleString()} XLM
                     </p>
                   </div>
-                  <a
-                    href={`${EXPLORER_BASE}/${entry.transaction_hash}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    data-testid={`dividend-tx-${entry.cycle}`}
-                    className="inline-flex items-center gap-1 font-mono text-xs text-primary hover:underline"
-                  >
-                    {entry.transaction_hash.slice(0, 12)}…
-                    <ExternalLink className="h-3 w-3" aria-hidden="true" />
-                  </a>
+                  <TxHash
+                    hash={entry.transaction_hash}
+                    className="text-xs"
+                    truncateLength={{ start: 12, end: 0 }}
+                    testId={`dividend-tx-${entry.cycle}`}
+                  />
                 </li>
               ))}
             </ul>
