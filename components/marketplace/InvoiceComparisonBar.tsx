@@ -1,6 +1,7 @@
 "use client";
 
-import { useComparison } from "./InvoiceComparisonContext";
+import Link from "next/link";
+import { useComparison, MAX_COMPARE_INVOICES } from "./InvoiceComparisonContext";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { X, Scale } from "lucide-react";
@@ -20,8 +21,11 @@ export function InvoiceComparisonBar() {
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-3">
               <Scale className="h-5 w-5 text-muted-foreground" />
-              <span className="text-sm font-medium">
-                {compareInvoices.length} invoice{compareInvoices.length > 1 ? "s" : ""} selected
+              <span
+                className="text-sm font-medium"
+                data-testid="compare-bar-count"
+              >
+                {compareInvoices.length} of {MAX_COMPARE_INVOICES} selected
               </span>
             </div>
 
@@ -38,6 +42,8 @@ export function InvoiceComparisonBar() {
                     variant="ghost"
                     size="sm"
                     className="h-5 w-5 p-0"
+                    aria-label={`Remove ${invoice.title} from compare`}
+                    data-testid={`compare-bar-remove-${invoice.id}`}
                     onClick={() => removeFromCompare(invoice.id)}
                   >
                     <X className="h-3 w-3" />
@@ -52,15 +58,20 @@ export function InvoiceComparisonBar() {
                 size="sm"
                 onClick={clearComparison}
                 disabled={compareInvoices.length === 0}
+                data-testid="compare-bar-clear"
               >
                 Clear
               </Button>
               <Button
                 size="sm"
+                variant="outline"
                 onClick={() => setModalOpen(true)}
-                disabled={compareInvoices.length < 2}
+                data-testid="compare-bar-preview"
               >
-                Compare
+                Quick view
+              </Button>
+              <Button asChild size="sm" data-testid="compare-bar-view">
+                <Link href="/marketplace/compare">Compare</Link>
               </Button>
             </div>
           </div>

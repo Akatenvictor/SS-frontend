@@ -53,24 +53,26 @@ describe("InvoiceComparisonContext", () => {
     expect(result.current.compareInvoices).toHaveLength(1);
   });
 
-  it("should limit comparison to 2 invoices", () => {
+  it("should limit comparison to 3 invoices", () => {
     const { result } = renderHook(() => useComparison(), { wrapper });
 
     const invoice2: Invoice = { ...mockInvoice, id: "2", title: "Invoice 2" };
     const invoice3: Invoice = { ...mockInvoice, id: "3", title: "Invoice 3" };
+    const invoice4: Invoice = { ...mockInvoice, id: "4", title: "Invoice 4" };
 
     act(() => {
       result.current.addToCompare(mockInvoice);
       result.current.addToCompare(invoice2);
-    });
-
-    expect(result.current.compareInvoices).toHaveLength(2);
-
-    act(() => {
       result.current.addToCompare(invoice3);
     });
 
-    expect(result.current.compareInvoices).toHaveLength(2);
+    expect(result.current.compareInvoices).toHaveLength(3);
+
+    act(() => {
+      result.current.addToCompare(invoice4);
+    });
+
+    expect(result.current.compareInvoices).toHaveLength(3);
   });
 
   it("should remove invoice from comparison", () => {

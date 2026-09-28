@@ -170,7 +170,7 @@ function ProRataTooltip() {
         data-testid="returns-tooltip-content"
         className="invisible absolute left-4 top-5 z-10 w-64 rounded-md border border-border bg-popover p-2 text-xs leading-relaxed text-popover-foreground shadow-lg group-hover:visible"
       >
-        Each investor's return is computed with{" "}
+        Each investor&apos;s return is computed with{" "}
         <strong>floor division</strong>:
         <code className="mt-1 block rounded bg-muted px-1 py-0.5">
           net = floor(principal ÷ totalPrincipal × totalReturn)

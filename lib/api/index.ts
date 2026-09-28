@@ -27,6 +27,8 @@ export interface Invoice {
   raised_last_24h?: number;
   has_more: boolean;
   next_cursor: string | null;
+  /** Issuer reputation 0-100; absent when the issuer has no settlement history. */
+  issuer_score?: number;
 }
 
 /** Category tabs on the marketplace homepage (#452). */
@@ -182,6 +184,20 @@ export interface KycStatus {
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "/api";
 
+/**
+ * Raised by API helpers when the server reports the resource is absent, so
+ * callers can render a 404 state instead of a generic failure.
+ */
+export class ApiNotFoundError extends Error {
+  readonly status: number;
+
+  constructor(message = "Not found") {
+    super(message);
+    this.name = "ApiNotFoundError";
+    this.status = 404;
+  }
+}
+
 export interface FeatureComponent142Input {
   label?: string;
   metadata?: Record<string, unknown>;
@@ -223,7 +239,16 @@ export async function fetchInvoices(
 
 export async function fetchInvoiceDetail(id: string): Promise<InvoiceDetail> {
   const res = await fetch(`${API_BASE}/invoices/${id}`);
+  if (res.status === 404) throw new ApiNotFoundError("Invoice not found");
   if (!res.ok) throw new Error("Failed to fetch invoice detail");
+  return res.json();
+}
+
+/** Fetches a public issuer profile, including its full invoice history. */
+export async function fetchIssuerProfile(id: string): Promise<IssuerProfile> {
+  const res = await fetch(`${API_BASE}/issuers/${encodeURIComponent(id)}`);
+  if (res.status === 404) throw new ApiNotFoundError("Issuer not found");
+  if (!res.ok) throw new Error("Failed to fetch issuer profile");
   return res.json();
 }
 

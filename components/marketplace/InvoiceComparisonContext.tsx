@@ -3,6 +3,9 @@
 import { createContext, useContext, useState, ReactNode } from "react";
 import type { Invoice } from "@/lib/api";
 
+/** Maximum number of invoices that can be compared at once. */
+export const MAX_COMPARE_INVOICES = 3;
+
 interface ComparisonContextType {
   compareInvoices: Invoice[];
   addToCompare: (invoice: Invoice) => void;
@@ -18,14 +21,19 @@ const ComparisonContext = createContext<ComparisonContextType | undefined>(
 export function ComparisonProvider({ children }: { children: ReactNode }) {
   const [compareInvoices, setCompareInvoices] = useState<Invoice[]>([]);
 
+  // Functional updates throughout: reading `compareInvoices` from the closure
+  // means two adds in the same tick both start from the same base and the
+  // second silently overwrites the first.
   const addToCompare = (invoice: Invoice) => {
-    if (compareInvoices.length >= 2) return;
-    if (compareInvoices.some((inv) => inv.id === invoice.id)) return;
-    setCompareInvoices([...compareInvoices, invoice]);
+    setCompareInvoices((current) => {
+      if (current.length >= MAX_COMPARE_INVOICES) return current;
+      if (current.some((inv) => inv.id === invoice.id)) return current;
+      return [...current, invoice];
+    });
   };
 
   const removeFromCompare = (invoiceId: string) => {
-    setCompareInvoices(compareInvoices.filter((inv) => inv.id !== invoiceId));
+    setCompareInvoices((current) => current.filter((inv) => inv.id !== invoiceId));
   };
 
   const clearComparison = () => {

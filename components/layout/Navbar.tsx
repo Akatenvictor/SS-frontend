@@ -56,12 +56,16 @@ export function Navbar() {
             </>
           )}
           {isConnected ? (
-            <WalletChip
-              address={address!}
-              network={network}
-              onDisconnect={() => disconnect()}
-              onNetworkChange={refreshNetwork}
-            />
+            <div className="flex items-center gap-2">
+              {/* USDC balance (#402) sits next to the connected address. */}
+              <UsdcBalanceChip address={address!} network={network} />
+              <WalletChip
+                address={address!}
+                network={network}
+                onDisconnect={() => disconnect()}
+                onNetworkChange={refreshNetwork}
+              />
+            </div>
           ) : (
             <Button
               onClick={() => setConnectOpen(true)}
