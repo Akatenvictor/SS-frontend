@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { TxHash } from "@/components/ui/tx-hash";
 import { useBuyFractionMutation } from "@/hooks/useSecondaryMarket";
 import { listingImpliedYield, totalCost } from "@/lib/secondaryMarket";
 import type { ResaleListing } from "@/lib/api";
@@ -36,12 +37,16 @@ export function BuyFractionModal({
 }: BuyFractionModalProps) {
   const [quantity, setQuantity] = useState(1);
   const [error, setError] = useState<string | null>(null);
+  // Hash of the submitted `transfer_fraction` call, shown once the purchase
+  // lands so the buyer can verify it on-chain.
+  const [txHash, setTxHash] = useState<string | null>(null);
   const buyMutation = useBuyFractionMutation();
 
   // Reset whenever a different listing is opened.
   useEffect(() => {
     setQuantity(1);
     setError(null);
+    setTxHash(null);
   }, [listing?.id, open]);
 
   if (!listing) return null;
@@ -54,9 +59,14 @@ export function BuyFractionModal({
     if (!listing || !isValid) return;
     setError(null);
     try {
-      await buyMutation.mutateAsync({ listingId: listing.id, quantity });
+      const result = await buyMutation.mutateAsync({
+        listingId: listing.id,
+        quantity,
+      });
+      setTxHash(result?.transaction_hash ?? null);
       onPurchased?.(listing);
-      onOpenChange(false);
+      // Stays open on success so the transaction hash remains visible and
+      // copyable; closing here would hide the receipt the buyer just made.
     } catch (err) {
       setError(err instanceof Error ? err.message : "Purchase failed");
     }
@@ -111,6 +121,18 @@ export function BuyFractionModal({
             </div>
           </dl>
 
+          {txHash && (
+            <div
+              className="space-y-2 rounded-lg border border-green-500/40 bg-green-500/5 p-3"
+              data-testid="buy-fraction-success"
+            >
+              <p className="text-sm font-medium text-green-700 dark:text-green-400">
+                Purchase submitted
+              </p>
+              <TxHash hash={txHash} className="text-xs" testId="buy-fraction-tx-hash" />
+            </div>
+          )}
+
           {quantity > maxQuantity && (
             <p className="text-sm text-destructive" data-testid="buy-quantity-error">
               Only {maxQuantity} {maxQuantity === 1 ? "fraction is" : "fractions are"}{" "}
@@ -125,16 +147,24 @@ export function BuyFractionModal({
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} data-testid="buy-cancel-btn">
-            Cancel
-          </Button>
-          <Button
-            onClick={handleConfirm}
-            disabled={!isValid || buyMutation.isPending}
-            data-testid="buy-confirm-btn"
-          >
-            {buyMutation.isPending ? "Submitting…" : "Confirm purchase"}
-          </Button>
+          {txHash ? (
+            <Button variant="outline" onClick={() => onOpenChange(false)} data-testid="buy-done-btn">
+              Done
+            </Button>
+          ) : (
+            <>
+              <Button variant="outline" onClick={() => onOpenChange(false)} data-testid="buy-cancel-btn">
+                Cancel
+              </Button>
+              <Button
+                onClick={handleConfirm}
+                disabled={!isValid || buyMutation.isPending}
+                data-testid="buy-confirm-btn"
+              >
+                {buyMutation.isPending ? "Submitting…" : "Confirm purchase"}
+              </Button>
+            </>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

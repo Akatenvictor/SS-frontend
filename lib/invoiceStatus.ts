@@ -35,13 +35,25 @@ const TAB_STATUSES: Record<InvoiceTab, ReadonlyArray<string>> = {
   settled: ["settled"],
 };
 
+/**
+ * A status as the API may report it.
+ *
+ * Wider than `Invoice["status"]` on purpose: `TAB_STATUSES.live` accepts
+ * `published` and `active` as aliases for `open`, so a payload carrying one of
+ * those must still match rather than being silently dropped from every tab.
+ */
+type TabbableStatus = Invoice["status"] | "published" | "active";
+
 /** True when `invoice` belongs under `tab`. */
-export function matchesTab(invoice: Pick<Invoice, "status">, tab: InvoiceTab): boolean {
+export function matchesTab(
+  invoice: { status: TabbableStatus },
+  tab: InvoiceTab,
+): boolean {
   return TAB_STATUSES[tab].includes(invoice.status);
 }
 
 /** Invoices belonging under `tab`, preserving input order. */
-export function filterByTab<T extends Pick<Invoice, "status">>(
+export function filterByTab<T extends { status: TabbableStatus }>(
   invoices: readonly T[],
   tab: InvoiceTab,
 ): T[] {
@@ -49,7 +61,7 @@ export function filterByTab<T extends Pick<Invoice, "status">>(
 }
 
 /** Count of invoices per tab, for the tab badges. */
-export function countByTab<T extends Pick<Invoice, "status">>(
+export function countByTab<T extends { status: TabbableStatus }>(
   invoices: readonly T[],
 ): Record<InvoiceTab, number> {
   return INVOICE_TABS.reduce(

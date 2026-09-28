@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { ExternalLink, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { fetchIssuerEarnings, withdrawIssuerEarnings, type IssuerInvoiceEarning } from "@/lib/api";
 import { formatXLM } from "@/lib/format";
@@ -12,8 +12,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { TxHash } from "@/components/ui/tx-hash";
 
-const STELLAR_EXPLORER = "https://stellar.expert/explorer/public/tx";
 const PAYOUT_BADGE: Record<string, "default" | "secondary" | "outline" | "destructive"> = {
   paid: "secondary",
   pending: "outline",
@@ -123,11 +123,12 @@ export function IssuerEarningsDashboard() {
                         <div className="flex items-center gap-2">
                           <Badge variant={PAYOUT_BADGE[inv.payout_status] ?? "outline"}>{inv.payout_status}</Badge>
                           {inv.transaction_hash && (
-                            <a href={`${STELLAR_EXPLORER}/${inv.transaction_hash}`} target="_blank" rel="noreferrer"
-                              className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
-                              data-testid={`tx-link-${inv.invoice_id}`}>
-                              <ExternalLink className="h-3 w-3" /> Tx
-                            </a>
+                            <TxHash
+                              hash={inv.transaction_hash}
+                              showLabel
+                              className="text-xs"
+                              testId={`tx-link-${inv.invoice_id}`}
+                            />
                           )}
                         </div>
                       </td>
