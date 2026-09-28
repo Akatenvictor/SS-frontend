@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { calculateActiveTotal, type InvestmentPosition } from "@/lib/portfolio";
+import { availableFractions, calculateActiveTotal, type InvestmentPosition } from "@/lib/portfolio";
 
 describe("calculateActiveTotal", () => {
     it("returns correct active total for a multi-position portfolio", () => {
@@ -67,5 +67,43 @@ describe("calculateActiveTotal", () => {
         const result = calculateActiveTotal(positions);
 
         expect(result.formattedTotal).toBe("12,345.00 XLM");
+    });
+});
+describe("availableFractions (issue #421)", () => {
+    function position(overrides: Partial<InvestmentPosition> = {}): InvestmentPosition {
+        return {
+            invoice_id: "inv-1",
+            invoice_title: "Acme receivable",
+            committed_amount: 2500,
+            status: "active",
+            quantity: 100,
+            ...overrides,
+        };
+    }
+
+    it("is the full balance when nothing is listed", () => {
+        expect(availableFractions(position({ quantity: 100, listed_quantity: 0 }))).toBe(100);
+    });
+
+    it("subtracts listed fractions, which are encumbered by a live sale", () => {
+        expect(availableFractions(position({ quantity: 100, listed_quantity: 30 }))).toBe(70);
+    });
+
+    it("treats a missing listed_quantity as zero, for positions predating the field", () => {
+        expect(availableFractions(position({ quantity: 100 }))).toBe(100);
+    });
+
+    it("is zero when every fraction is listed", () => {
+        expect(availableFractions(position({ quantity: 100, listed_quantity: 100 }))).toBe(0);
+    });
+
+    it("clamps to zero rather than going negative if listed exceeds owned", () => {
+        // A position whose listing outlasted a partial top-up must not offer a
+        // negative allowance to the transfer modal.
+        expect(availableFractions(position({ quantity: 10, listed_quantity: 25 }))).toBe(0);
+    });
+
+    it("is zero for a position with no quantity at all", () => {
+        expect(availableFractions(position({ quantity: undefined }))).toBe(0);
     });
 });

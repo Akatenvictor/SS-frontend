@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { investInInvoice, transferInvoicePosition } from "@/lib/api";
+import { investInInvoice, transferInvoiceFractions, transferInvoicePosition } from "@/lib/api";
 import type { InvoiceDetail } from "@/lib/api";
 import { toast } from "sonner";
 import { INVOICES_QUERY_KEY } from "./useInvoices";
@@ -104,6 +104,56 @@ export function useTransferPositionMutation() {
 
     onError: () => {
       toast.error("Position transfer failed");
+    },
+  });
+}
+
+interface TransferFractionsMutationVars {
+  invoiceId: string;
+  recipient: string;
+  quantity: number;
+  walletAddress: string;
+  token?: string | null;
+}
+
+/**
+ * Issue #421: sends a number of invoice fractions the investor already holds to
+ * another Stellar wallet, without selling them.
+ *
+ * The transaction hash is returned rather than swallowed because the transfer
+ * modal shows it as a receipt link — a confirmed transfer the user cannot
+ * verify is not a confirmed transfer as far as they are concerned.
+ */
+export function useTransferFractionsMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      invoiceId,
+      recipient,
+      quantity,
+      walletAddress,
+      token,
+    }: TransferFractionsMutationVars) =>
+      transferInvoiceFractions(
+        invoiceId,
+        recipient,
+        quantity,
+        walletAddress,
+        token ?? undefined
+      ),
+
+    onSuccess: (data, { quantity }) => {
+      toast.success(
+        `Transferred ${quantity} fraction${quantity === 1 ? "" : "s"} successfully`
+      );
+      // The sender's balance drops, so the portfolio row this was opened from
+      // has to re-read.
+      queryClient.invalidateQueries({ queryKey: PORTFOLIO_QUERY_KEY });
+    },
+
+    onError: () => {
+      toast.error("Fraction transfer failed");
     },
   });
 }

@@ -17,13 +17,8 @@ export type { SwapProposal } from "./AtomicSwapForm";
 export { SecondaryListingCard, SecondaryListingSkeleton } from "./SecondaryListingCard";
 export { SecondaryMarketFiltersPanel } from "./SecondaryMarketFilters";
 export { BuyFractionModal } from "./BuyFractionModal";
-export { FeaturedInvoicesCarousel } from "./FeaturedInvoicesCarousel";
-export { CategoryTabs } from "./CategoryTabs";
-export {
-  MarketplaceSearchBar,
-  searchInvoices,
-  sortInvoices,
-  SORT_OPTIONS,
-  SORT_LABELS,
-} from "./MarketplaceSearchBar";
-export type { MarketplaceSort } from "./MarketplaceSearchBar";
+export { TaxonomyFilterPanel } from "./TaxonomyFilterPanel";
+export { ActiveTaxonomyChips } from "./ActiveTaxonomyChips";
+export { InvoiceTagPills } from "./InvoiceTagPills";
+export { SettlementCountdown } from "./SettlementCountdown";
+export { InvestorDemandMetrics } from "./InvestorDemandMetrics";

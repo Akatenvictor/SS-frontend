@@ -3,8 +3,11 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { FundingProgressBar } from "@/components/invoices/FundingProgressBar";
 import { CountdownTimer, isExpired } from "./countdown-timer";
-import { CompareToggleButton } from "./CompareToggleButton";
-import { Lock } from "lucide-react";
+import { InvoiceTagPills } from "./InvoiceTagPills";
+import { SettlementCountdown } from "./SettlementCountdown";
+import { InvestorDemandMetrics } from "./InvestorDemandMetrics";
+import { useComparison } from "./InvoiceComparisonContext";
+import { Lock, Scale } from "lucide-react";
 import type { Invoice } from "@/lib/api";
 import { useSuitabilityTier } from "@/hooks/useSuitabilityTier";
 import { REQUIRED_TIER, TIER_LABELS, canInvestInGrade } from "@/lib/suitability";
@@ -38,6 +41,7 @@ export function InvoiceCard({ invoice, onInvest }: InvoiceCardProps) {
             {invoice.status}
           </Badge>
         </div>
+        <InvoiceTagPills invoice={invoice} />
       </CardHeader>
 
       <CardContent className="flex flex-1 flex-col gap-3">
@@ -53,6 +57,23 @@ export function InvoiceCard({ invoice, onInvest }: InvoiceCardProps) {
           target={invoice.amount}
           investorCount={invoice.investor_count}
         />
+
+        {/*
+          Maturity countdown (#423) and demand signals (#422). The funding
+          countdown above tracks the *funding* deadline, which only applies
+          while an invoice is open; this one tracks payout, which applies to
+          funded and settled invoices alike.
+        */}
+        <div className="flex items-center justify-between gap-2">
+          <SettlementCountdown
+            maturityDate={invoice.due_date}
+            settledAt={invoice.status === "settled" ? invoice.settled_at : null}
+          />
+          <InvestorDemandMetrics
+            invoiceId={invoice.id}
+            investorCountFallback={invoice.investor_count}
+          />
+        </div>
 
         {grade && (
           <p className="text-xs text-muted-foreground">Risk grade {grade}</p>

@@ -11,12 +11,20 @@ export interface Invoice {
   rejection_reason?: string;
   /** Risk grade (A = safest). Used to gate investing by suitability tier (#391). */
   risk_rating?: { tier: "A" | "B" | "C" | "D"; score?: number };
-  /** Sector category, used by the marketplace category tabs (#452). */
+  /** Industry sector, for the marketplace taxonomy filter (#420). */
   category?: string;
-  /** Human-facing invoice reference, searchable from the marketplace search bar. */
-  invoice_number?: string;
-  /** When the invoice was published, used for the "newest" sort order (#452). */
-  created_at?: string;
+  /** Coarser risk grouping derived from `risk_rating.tier` (#420). */
+  risk_tier?: string;
+  /** Geographic region of the underlying receivable (#420). */
+  region?: string;
+  /** Free-form tags chosen by the issuer at publish time (#420). */
+  tags?: string[];
+  /** When the invoice reached `funded`, for the 24h velocity window (#421). */
+  funded_at?: string | null;
+  /** When the invoice settled; present only on settled invoices (#423). */
+  settled_at?: string | null;
+  /** Amount committed in the 24h before now, for the velocity badge (#421). */
+  raised_last_24h?: number;
   has_more: boolean;
   next_cursor: string | null;
   /** Issuer reputation 0-100; absent when the issuer has no settlement history. */
