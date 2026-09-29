@@ -180,9 +180,8 @@ export function InvoiceDetailView({ invoiceId }: InvoiceDetailViewProps) {
   const { data: protocolStatus } = useProtocolStatus();
   const { address } = useWallet();
 
-  // The floor is a protocol-wide setting (issue #116); fall back rather than
-  // block investing while it loads.
-  const minInvestment = protocolStatus?.min_investment ?? DEFAULT_MIN_INVESTMENT;
+  // The floor is a per-invoice setting from invoice API (#436), falling back to protocol-wide setting.
+  const minInvestment = invoice?.min_investment ?? protocolStatus?.min_investment ?? DEFAULT_MIN_INVESTMENT;
 
   usePageTitle(invoice?.title ?? null);
 

@@ -8,6 +8,8 @@ export interface Invoice {
   status: "draft" | "pending" | "open" | "funded" | "settled" | "rejected";
   due_date: string;
   yield_percentage?: number;
+  /** Minimum investment amount in XLM required for this invoice (#436). */
+  min_investment?: number;
   rejection_reason?: string;
   /** Risk grade (A = safest). Used to gate investing by suitability tier (#391). */
   risk_rating?: { tier: "A" | "B" | "C" | "D"; score?: number };
