@@ -10,7 +10,7 @@ import { TopUpCta } from "@/components/wallet/TopUpCta";
 import { useInvestMutation } from "@/hooks/useInvestments";
 import { useUsdcBalance } from "@/hooks/useUsdcBalance";
 import { useWallet } from "@/context/WalletContext";
-import { formatUsdc } from "@/lib/format";
+import { formatUsdc, formatXLM } from "@/lib/format";
 import {
   Popover,
   PopoverContent,
@@ -35,6 +35,7 @@ export function InvestmentModal({
 }: InvestmentModalProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [validAmount, setValidAmount] = useState<number | null>(null);
+  const [amountError, setAmountError] = useState<string | null>(null);
   const investMutation = useInvestMutation();
   const { address, network } = useWallet();
   const { balance, refresh } = useUsdcBalance(address, network);
@@ -45,11 +46,12 @@ export function InvestmentModal({
     balance !== null && validAmount !== null && validAmount > balance;
 
   const handleInvest = async () => {
-    if (validAmount === null || insufficientBalance) return;
+    if (validAmount === null || amountError !== null || insufficientBalance) return;
 
     await investMutation.mutateAsync({ invoiceId, amount: validAmount });
     setIsOpen(false);
     setValidAmount(null);
+    setAmountError(null);
     // The chain has moved; re-read the balance instead of waiting for the
     // 60s poll.
     refresh();
@@ -70,6 +72,16 @@ export function InvestmentModal({
             </p>
           </div>
 
+          <div className="flex items-center justify-between text-sm" data-testid="investment-modal-min-investment">
+            <span className="text-muted-foreground">Minimum investment</span>
+            <span
+              className="font-medium tabular-nums"
+              data-testid="investment-modal-min-value"
+            >
+              {formatXLM(minInvestment)}
+            </span>
+          </div>
+
           <div className="flex items-center justify-between text-sm">
             <span className="text-muted-foreground">Wallet USDC balance</span>
             <span
@@ -84,6 +96,7 @@ export function InvestmentModal({
             min={minInvestment}
             max={maxInvestment}
             onValidAmountChange={setValidAmount}
+            onErrorChange={setAmountError}
           />
 
           {insufficientBalance && address && (
@@ -128,6 +141,7 @@ export function InvestmentModal({
               onClick={handleInvest}
               disabled={
                 validAmount === null ||
+                amountError !== null ||
                 investMutation.isPending ||
                 insufficientBalance
               }
